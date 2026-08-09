@@ -48,23 +48,45 @@ function ew_register_post_statuses() {
 // 2. ROLE CAPABILITIES
 // ════════════════════════════════════════════════════════════════════════════
 
+function ew_get_writer_role_slugs() {
+    return [ 'author' ];
+}
+
+function ew_get_editor_role_slugs() {
+    return [ 'editor', 'administrator' ];
+}
+
+function ew_user_has_any_role( $user, $roles ) {
+    $user_roles = (array) ( $user->roles ?? [] );
+    return (bool) array_intersect( $user_roles, $roles );
+}
+
+function ew_user_is_writer( $user = null ) {
+    $user = $user ?: wp_get_current_user();
+    return ew_user_has_any_role( $user, ew_get_writer_role_slugs() );
+}
+
 add_action( 'init', 'ew_set_role_capabilities' );
 function ew_set_role_capabilities() {
-    $author = get_role( 'author' );
-    if ( $author ) {
-        // Writers should not publish directly; publishing is unlocked only after approval.
-        $author->remove_cap( 'publish_posts' );
+    foreach ( ew_get_writer_role_slugs() as $writer_role_slug ) {
+        $writer_role = get_role( $writer_role_slug );
+        if ( $writer_role ) {
+            // Writers should not publish directly; publishing is unlocked only after approval.
+            $writer_role->remove_cap( 'publish_posts' );
+        }
     }
-    $editor = get_role( 'editor' );
-    if ( $editor ) {
-        $editor->add_cap( 'publish_posts' );
-        $editor->add_cap( 'edit_others_posts' );
+
+    foreach ( ew_get_editor_role_slugs() as $editor_role_slug ) {
+        $editor_role = get_role( $editor_role_slug );
+        if ( $editor_role ) {
+            $editor_role->add_cap( 'publish_posts' );
+            $editor_role->add_cap( 'edit_others_posts' );
+        }
     }
 }
 
 function ew_user_is_reviewer() {
-    $user_roles = (array) wp_get_current_user()->roles;
-    return in_array( 'editor', $user_roles, true ) || in_array( 'reviewer', $user_roles, true ) || in_array( 'administrator', $user_roles, true );
+    return ew_user_has_any_role( wp_get_current_user(), ew_get_editor_role_slugs() );
 }
 
 function ew_user_can_publish_post( $post_id ) {
@@ -126,7 +148,7 @@ function ew_grant_publish_cap_for_approved_posts( $allcaps, $caps, $args, $user 
 
 
 // ════════════════════════════════════════════════════════════════════════════
-// 3. SUBMIT FOR REVIEW BUTTON (writers)
+// 3. SUBMIT FOR REVIEW BUTTON (authors)
 // ════════════════════════════════════════════════════════════════════════════
 
 add_action( 'post_submitbox_misc_actions', 'ew_submit_for_review_button' );
@@ -200,8 +222,11 @@ function ew_notify_editors_review_requested( $post_id ) {
     $author   = get_userdata( $post->post_author );
     $edit_url = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
     $preview  = ew_get_preview_url( $post_id );
-    $editors  = get_users( [ 'role' => 'editor' ] );
-    $to       = array_map( fn( $u ) => $u->user_email, $editors );
+    $reviewers = get_users( [
+        'role__in' => ew_get_editor_role_slugs(),
+        'fields'   => [ 'user_email' ],
+    ] );
+    $to = array_values( array_unique( array_filter( array_map( fn( $u ) => $u->user_email, $reviewers ) ) ) );
 
     if ( empty( $to ) ) return;
 
@@ -327,7 +352,7 @@ function ew_render_feedback_metabox( $post ) {
         if ( in_array( $current_status, [ 'pending', 'changes_requested' ], true ) ) {
             echo '<textarea name="ew_review_note" id="ew_review_note" placeholder="List each requested change on its own line..." rows="4" style="width:100%;margin-top:12px;"></textarea>';
             echo '<div class="ew-change-actions">';
-            echo '<p class="ew-change-help">Approval keeps this post unpublished. Once approved, the writer can publish it.</p>';
+            echo '<p class="ew-change-help">Approval keeps this post unpublished. Once approved, the author can publish it.</p>';
             echo '<div>';
             echo '<button type="submit" name="ew_action" value="approve" class="button button-primary ew-btn-approve">Approve</button> ';
             echo '<button type="submit" name="ew_action" value="request_changes" class="button">Request Changes</button>';
@@ -502,7 +527,7 @@ function ew_intercept_editor_publish( $data, $postarr ) {
         $current_status  = get_post_status( $post_id );
 
         if ( $target_status === 'approved' ) {
-            // Writers can keep already-approved posts approved while editing,
+            // Authors can keep already-approved posts approved while editing,
             // but they must never promote a changes-requested post to approved.
             if ( $current_status !== 'approved' ) {
                 $data['post_status'] = $current_status === 'changes_requested' ? 'changes_requested' : 'pending';

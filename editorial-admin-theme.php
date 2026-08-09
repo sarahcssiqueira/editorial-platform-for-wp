@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Editorial Admin Theme
  * Plugin URI:        https://github.com/your-repo/editorial-workflow
- * Description:       Role-aware admin interface for editorial teams: clean menus for writers, review queue for editors, dark editorial skin.
+ * Description:       Role-aware admin interface for editorial teams: clean menus for authors, review queue for editors, dark editorial skin.
  * Version:           1.0.0
  * Author:            Sarah
  * License:           GPL-2.0-or-later
@@ -10,6 +10,34 @@
  */
 
 defined( 'ABSPATH' ) || exit;
+
+function eat_get_writer_role_slugs() {
+    return [ 'author' ];
+}
+
+function eat_get_editor_role_slugs() {
+    return [ 'editor' ];
+}
+
+function eat_user_has_any_role( $user, $roles ) {
+    $user_roles = (array) ( $user->roles ?? [] );
+    return (bool) array_intersect( $user_roles, $roles );
+}
+
+function eat_user_is_writer( $user = null ) {
+    $user = $user ?: wp_get_current_user();
+    return eat_user_has_any_role( $user, eat_get_writer_role_slugs() );
+}
+
+function eat_user_is_editor( $user = null ) {
+    $user = $user ?: wp_get_current_user();
+    return eat_user_has_any_role( $user, eat_get_editor_role_slugs() );
+}
+
+function eat_user_is_admin( $user = null ) {
+    $user = $user ?: wp_get_current_user();
+    return eat_user_has_any_role( $user, [ 'administrator' ] );
+}
 
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -35,13 +63,13 @@ add_action( 'admin_menu', 'eat_cleanup_menu', 999 );
 function eat_cleanup_menu() {
     $user = wp_get_current_user();
 
-    if ( in_array( 'author', (array) $user->roles, true ) ) {
+    if ( eat_user_is_writer( $user ) ) {
         foreach ( [ 'index.php', 'edit-comments.php', 'tools.php', 'options-general.php', 'themes.php', 'plugins.php', 'users.php' ] as $page ) {
             remove_menu_page( $page );
         }
     }
 
-    if ( in_array( 'editor', (array) $user->roles, true ) ) {
+    if ( eat_user_is_editor( $user ) ) {
         foreach ( [ 'tools.php', 'options-general.php', 'themes.php', 'plugins.php' ] as $page ) {
             remove_menu_page( $page );
         }
@@ -56,9 +84,9 @@ function eat_cleanup_menu() {
 add_filter( 'admin_body_class', 'eat_body_class' );
 function eat_body_class( $classes ) {
     $user = wp_get_current_user();
-    if ( in_array( 'author', (array) $user->roles, true ) )        $classes .= ' eat-writer';
-    elseif ( in_array( 'editor', (array) $user->roles, true ) )    $classes .= ' eat-editor';
-    elseif ( in_array( 'administrator', (array) $user->roles, true ) ) $classes .= ' eat-admin';
+    if ( eat_user_is_writer( $user ) )        $classes .= ' eat-writer';
+    elseif ( eat_user_is_editor( $user ) )    $classes .= ' eat-editor';
+    elseif ( eat_user_is_admin( $user ) )     $classes .= ' eat-admin';
     return $classes;
 }
 
@@ -71,13 +99,13 @@ add_action( 'admin_bar_menu', 'eat_admin_bar', 999 );
 function eat_admin_bar( $wp_admin_bar ) {
     $user = wp_get_current_user();
 
-    if ( ! in_array( 'administrator', (array) $user->roles, true ) ) {
+    if ( ! eat_user_is_admin( $user ) ) {
         foreach ( [ 'wp-logo', 'customize', 'comments', 'new-content' ] as $node ) {
             $wp_admin_bar->remove_node( $node );
         }
     }
 
-    if ( in_array( 'editor', (array) $user->roles, true ) ) {
+    if ( eat_user_is_editor( $user ) || eat_user_is_admin( $user ) ) {
         $pending = get_posts( [ 'post_status' => 'pending', 'numberposts' => -1 ] );
         $n = count( $pending );
         if ( $n > 0 ) {
