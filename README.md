@@ -56,11 +56,15 @@ define( 'EDITORIAL_SLACK_WEBHOOK', 'https://hooks.slack.com/services/XXX/YYY/ZZZ
 ```
 Writer drafts post
     → clicks "Submit for Review"
-        → status: in_review
+        → status: pending
         → editors notified (email + Slack)
             → editor opens preview link
-            → editor approves → published + cache cleared
-            → editor requests changes → writer notified with note
+            → editor approves → status: approved
+                → post stays unpublished
+                → writer can now publish
+                → published + cache cleared
+            → editor requests changes → status: changes_requested
+                → writer notified with note
                 → writer revises → resubmits
 ```
 
@@ -73,8 +77,8 @@ Writer drafts post
 
 | Role            | Can do                                    |
 | --------------- | ----------------------------------------- |
-| Author (Writer) | Write, edit own posts, submit for review  |
-| Editor          | Review, approve, request changes, publish |
+| Author (Writer) | Write, edit own posts, submit for review, publish own approved posts |
+| Editor          | Review, approve, request changes, publish approved posts |
 | Administrator   | Everything                                |
 
 

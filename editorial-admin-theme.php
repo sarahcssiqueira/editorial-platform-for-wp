@@ -127,7 +127,7 @@ function eat_setup_dashboard() {
 
 function eat_render_dashboard_widget() {
     $pending  = get_posts( [ 'post_status' => 'pending',  'numberposts' => 10, 'orderby' => 'modified', 'order' => 'DESC' ] );
-    $rejected = get_posts( [ 'post_status' => 'rejected', 'numberposts' => 10, 'orderby' => 'modified', 'order' => 'DESC' ] );
+    $changes_requested = get_posts( [ 'post_status' => 'changes_requested', 'numberposts' => 10, 'orderby' => 'modified', 'order' => 'DESC' ] );
     ?>
     <div class="eat-dashboard-queue">
         <?php if ( ! empty( $pending ) ) : ?>
@@ -143,10 +143,10 @@ function eat_render_dashboard_widget() {
         <?php else : ?>
         <div class="eat-queue-empty">✓ Nothing pending review</div>
         <?php endif; ?>
-        <?php if ( ! empty( $rejected ) ) : ?>
+        <?php if ( ! empty( $changes_requested ) ) : ?>
         <div class="eat-queue-group eat-queue-changes">
-            <div class="eat-queue-label">Rejected / Changes Requested (<?php echo count( $rejected ); ?>)</div>
-            <?php foreach ( $rejected as $post ) : ?>
+            <div class="eat-queue-label">Changes Requested (<?php echo count( $changes_requested ); ?>)</div>
+            <?php foreach ( $changes_requested as $post ) : ?>
             <div class="eat-queue-item">
                 <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $post->ID . '&action=edit' ) ); ?>"><?php echo esc_html( $post->post_title ?: '(Untitled)' ); ?></a>
                 <span class="eat-queue-meta"><?php echo human_time_diff( strtotime( $post->post_modified ) ); ?> ago</span>
@@ -169,7 +169,7 @@ function eat_enqueue_split_view( $hook ) {
     if ( ! current_user_can( 'publish_posts' ) ) return;
 
     global $post;
-    if ( ! $post || ! in_array( $post->post_status, [ 'draft', 'pending', 'rejected', 'approved' ], true ) ) return;
+    if ( ! $post || ! in_array( $post->post_status, [ 'draft', 'pending', 'changes_requested', 'approved' ], true ) ) return;
 
     $preview_url = ew_get_preview_url( $post->ID );
 
