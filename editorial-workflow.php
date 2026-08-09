@@ -261,19 +261,13 @@ function ew_output_change_request_styles() {
     <?php
 }
 
-add_action( 'add_meta_boxes', 'ew_add_review_metabox' );
-function ew_add_review_metabox() {
-    if ( ! ew_user_is_reviewer() ) return;
-    add_meta_box( 'ew_review_panel', '✦ Editorial Review', 'ew_render_review_metabox', [ 'post', 'page' ], 'side', 'high' );
-}
-
 add_action( 'add_meta_boxes', 'ew_add_feedback_metabox' );
 function ew_add_feedback_metabox() {
     global $post;
     if ( ! $post || ! in_array( $post->post_type, [ 'post', 'page' ], true ) ) return;
     if ( ! current_user_can( 'edit_post', $post->ID ) ) return;
 
-    add_meta_box( 'ew_feedback_history', 'Editorial Changes', 'ew_render_feedback_metabox', [ 'post', 'page' ], 'normal', 'default' );
+    add_meta_box( 'ew_feedback_history', 'Editorial Workflow', 'ew_render_feedback_metabox', [ 'post', 'page' ], 'normal', 'high' );
 }
 
 function ew_render_feedback_metabox( $post ) {
@@ -290,16 +284,62 @@ function ew_render_feedback_metabox( $post ) {
     $active_request_id   = $active_request ? (int) $active_request->comment_ID : 0;
     $can_mark_done       = ew_current_user_can_resolve_change_requests( $post );
     $current_status      = get_post_status( $post->ID );
+    $latest_note         = ew_get_latest_change_request_note( $post->ID );
+    $preview_url         = ew_get_preview_url( $post->ID );
+    $can_publish         = ew_user_can_publish_post( $post->ID );
+    $is_reviewer         = ew_user_is_reviewer();
 
     wp_nonce_field( 'ew_change_resolution_' . $post->ID, 'ew_change_resolution_nonce' );
+    if ( $is_reviewer ) {
+        wp_nonce_field( 'ew_review_action_' . $post->ID, 'ew_review_nonce' );
+    }
 
     echo '<div class="ew-change-requests">';
-    echo '<div class="ew-change-tabs">';
-    echo '<button type="button" class="ew-change-tab is-active" data-ew-tab="open">Open Changes</button>';
-    echo '<button type="button" class="ew-change-tab" data-ew-tab="history">History</button>';
+    if ( $is_reviewer ) {
+        echo '<div class="ew-change-batch is-active">';
+        echo '<div class="ew-change-batch-header">';
+        echo '<div>';
+        echo '<p class="ew-change-batch-title">Review Actions</p>';
+        echo '<p class="ew-change-batch-meta">Status: ' . esc_html( ew_status_label( $current_status ) ) . '</p>';
+        echo '</div>';
+        if ( $preview_url ) {
+            echo '<a href="' . esc_url( $preview_url ) . '" target="_blank" class="button button-small">Open Preview</a>';
+        }
+        echo '</div>';
+
+        if ( $latest_note ) {
+            echo '<p class="ew-change-note"><strong>Latest note:</strong> ' . esc_html( $latest_note ) . '</p>';
+        }
+
+        if ( in_array( $current_status, [ 'pending', 'changes_requested' ], true ) ) {
+            echo '<textarea name="ew_review_note" id="ew_review_note" placeholder="List each requested change on its own line..." rows="4" style="width:100%;margin-top:12px;"></textarea>';
+            echo '<div class="ew-change-actions">';
+            echo '<p class="ew-change-help">Approval keeps this post unpublished. Once approved, the writer can publish it.</p>';
+            echo '<div>';
+            echo '<button type="submit" name="ew_action" value="approve" class="button button-primary ew-btn-approve">Approve</button> ';
+            echo '<button type="submit" name="ew_action" value="request_changes" class="button">Request Changes</button>';
+            echo '</div>';
+            echo '</div>';
+        } elseif ( $current_status === 'approved' ) {
+            echo '<p class="ew-change-note">' . esc_html( $can_publish ? 'This post is approved and can now be published.' : 'This post is approved, but this user cannot publish it.' ) . '</p>';
+        }
+
+        echo '</div>';
+    }
+
+    echo '<div class="ew-change-batch is-active">';
+    echo '<div class="ew-change-batch-header">';
+    echo '<div>';
+    echo '<p class="ew-change-batch-title">Open Changes</p>';
+    echo '<p class="ew-change-batch-meta">Current status: ' . esc_html( ew_status_label( $current_status ) ) . '</p>';
+    echo '</div>';
+    if ( $active_request ) {
+        $active_items = ew_get_change_request_items( $active_request );
+        $active_open_items = array_values( array_filter( $active_items, fn( $item ) => ( $item['status'] ?? 'open' ) !== 'done' ) );
+        echo '<span class="ew-change-batch-status">' . esc_html( count( $active_open_items ) ) . ' open</span>';
+    }
     echo '</div>';
 
-    echo '<div class="ew-change-panel is-active" data-ew-panel="open">';
     if ( $active_request ) {
         $items           = ew_get_change_request_items( $active_request );
         $open_items      = array_values( array_filter( $items, fn( $item ) => ( $item['status'] ?? 'open' ) !== 'done' ) );
@@ -307,14 +347,7 @@ function ew_render_feedback_metabox( $post ) {
         $requested_at    = mysql2date( 'M j, Y g:i a', $active_request->comment_date );
         $request_summary = trim( (string) $active_request->comment_content );
 
-        echo '<div class="ew-change-batch is-active">';
-        echo '<div class="ew-change-batch-header">';
-        echo '<div>';
-        echo '<p class="ew-change-batch-title">Active Request</p>';
         echo '<p class="ew-change-batch-meta">Requested by ' . esc_html( $requested_by ) . ' on ' . esc_html( $requested_at ) . '</p>';
-        echo '</div>';
-        echo '<span class="ew-change-batch-status">' . esc_html( count( $open_items ) ) . ' open</span>';
-        echo '</div>';
 
         if ( $request_summary !== '' ) {
             echo '<p class="ew-change-note">' . esc_html( $request_summary ) . '</p>';
@@ -366,14 +399,22 @@ function ew_render_feedback_metabox( $post ) {
             echo '<button type="submit" name="ew_update_changes" value="1" class="button button-primary">Mark Selected Done</button>';
             echo '</div>';
         }
-
-        echo '</div>';
     } else {
-        echo '<p class="ew-change-empty">No open change requests.</p>';
+        if ( $latest_note ) {
+            echo '<p class="ew-change-note">' . esc_html( $latest_note ) . '</p>';
+        } else {
+            echo '<p class="ew-change-empty">No open change requests.</p>';
+        }
     }
     echo '</div>';
 
-    echo '<div class="ew-change-panel" data-ew-panel="history">';
+    echo '<div class="ew-change-batch">';
+    echo '<div class="ew-change-batch-header">';
+    echo '<div>';
+    echo '<p class="ew-change-batch-title">History</p>';
+    echo '<p class="ew-change-batch-meta">Previous change requests for this post.</p>';
+    echo '</div>';
+    echo '</div>';
     if ( empty( $comments ) ) {
         echo '<p class="ew-change-empty">No change-request history yet.</p>';
     } else {
@@ -431,63 +472,6 @@ function ew_render_feedback_metabox( $post ) {
     }
     echo '</div>';
     echo '</div>';
-
-    static $tabs_script_rendered = false;
-    if ( ! $tabs_script_rendered ) {
-        $tabs_script_rendered = true;
-        ?>
-        <script>
-        jQuery(function($){
-            $(document).on('click', '.ew-change-tab', function(){
-                var $tab = $(this);
-                var target = $tab.data('ew-tab');
-                var $root = $tab.closest('.ew-change-requests');
-
-                $root.find('.ew-change-tab').removeClass('is-active');
-                $tab.addClass('is-active');
-                $root.find('.ew-change-panel').removeClass('is-active');
-                $root.find('.ew-change-panel[data-ew-panel="' + target + '"]').addClass('is-active');
-            });
-        });
-        </script>
-        <?php
-    }
-}
-
-function ew_render_review_metabox( $post ) {
-    $status      = get_post_status( $post->ID );
-    $preview_url = ew_get_preview_url( $post->ID );
-    $note        = ew_get_latest_change_request_note( $post->ID );
-    $can_publish = ew_user_can_publish_post( $post->ID );
-    wp_nonce_field( 'ew_review_action_' . $post->ID, 'ew_review_nonce' );
-    ?>
-    <div class="ew-review-panel">
-        <div class="ew-status-badge ew-status-<?php echo esc_attr( $status ); ?>">
-            <?php echo esc_html( ew_status_label( $status ) ); ?>
-        </div>
-        <?php if ( $preview_url ) : ?>
-        <a href="<?php echo esc_url( $preview_url ); ?>" target="_blank" class="ew-preview-link button button-small">↗ Open Preview</a>
-        <?php endif; ?>
-        <?php if ( $note ) : ?>
-        <div class="ew-previous-note">
-            <strong>Last note:</strong>
-            <p><?php echo esc_html( $note ); ?></p>
-        </div>
-        <?php endif; ?>
-        <?php if ( in_array( $status, [ 'pending', 'changes_requested' ], true ) ) : ?>
-        <textarea name="ew_review_note" id="ew_review_note"
-                  placeholder="List each requested change on its own line..."
-                  rows="4" style="width:100%;margin-top:12px;"></textarea>
-        <div class="ew-review-actions">
-            <button type="submit" name="ew_action" value="approve" class="button button-primary ew-btn-approve">✓ Approve</button>
-            <button type="submit" name="ew_action" value="request_changes" class="button">↩ Request Changes</button>
-        </div>
-        <p style="margin-top:10px;">Approval keeps this post unpublished. Once approved, the writer can publish it.</p>
-        <?php elseif ( $status === 'approved' ) : ?>
-        <p style="margin-top:12px;"><?php echo esc_html( $can_publish ? 'This post is approved and can now be published.' : 'This post is approved, but this user cannot publish it.' ); ?></p>
-        <?php endif; ?>
-    </div>
-    <?php
 }
 
 add_filter( 'wp_insert_post_data', 'ew_intercept_editor_publish', 10, 2 );
