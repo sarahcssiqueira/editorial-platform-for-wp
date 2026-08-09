@@ -214,33 +214,42 @@ function eat_enqueue_split_view( $hook ) {
     $preview_url = ew_get_preview_url( $post->ID );
 
     wp_add_inline_style( 'editorial-admin-theme', '
-        /* Split view layout */
-        body.eat-split #wpbody-content { display: none; }
+        body { --eat-split-width: min(48vw, 760px); }
 
-        #eat-split-root {
-            display: flex;
-            height: calc(100vh - 32px); /* minus admin bar */
-            margin-top: 32px;
-            overflow: hidden;
+        #eat-split-toggle {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 100001;
+            background: #f5f0e8;
+            color: #000;
+            border: none;
+            padding: 8px 16px;
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            border-radius: 3px;
+            cursor: pointer;
+            font-family: Georgia, serif;
+            box-shadow: 0 2px 12px rgba(0,0,0,.4);
+            transition: background .15s;
         }
 
-        #eat-split-editor {
-            flex: 0 0 55%;
-            overflow-y: auto;
-            border-right: 1px solid #2a2a2a;
-            background: #0f0f0f;
-        }
+        #eat-split-toggle:hover { background: #c9a84c; }
 
-        #eat-split-editor > #wpbody-content {
-            display: block !important;
-        }
-
-        #eat-split-preview {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
+        #eat-split-dock {
+            position: fixed;
+            top: 32px;
+            right: 0;
+            width: var(--eat-split-width);
+            height: calc(100vh - 32px);
             background: #111;
+            border-left: 1px solid #2a2a2a;
+            z-index: 100000;
+            display: none;
+            flex-direction: column;
         }
+
+        body.eat-split-docked #eat-split-dock { display: flex; }
 
         #eat-split-preview-bar {
             display: flex;
@@ -285,25 +294,30 @@ function eat_enqueue_split_view( $hook ) {
             background: #fff;
         }
 
-        #eat-split-toggle {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            z-index: 9999;
-            background: #f5f0e8;
-            color: #000;
-            border: none;
-            padding: 8px 16px;
-            font-size: 12px;
-            letter-spacing: 0.08em;
-            border-radius: 3px;
-            cursor: pointer;
-            font-family: Georgia, serif;
-            box-shadow: 0 2px 12px rgba(0,0,0,.4);
-            transition: background .15s;
+        body.eat-split-docked #wpcontent,
+        body.eat-split-docked #wpfooter {
+            margin-right: var(--eat-split-width) !important;
         }
 
-        #eat-split-toggle:hover { background: #c9a84c; }
+        body.eat-split-docked.block-editor-page .interface-interface-skeleton {
+            margin-right: var(--eat-split-width) !important;
+        }
+
+        @media (max-width: 1200px) {
+            body { --eat-split-width: 46vw; }
+        }
+
+        @media (max-width: 1024px) {
+            #eat-split-toggle,
+            #eat-split-dock {
+                display: none !important;
+            }
+            body.eat-split-docked #wpcontent,
+            body.eat-split-docked #wpfooter,
+            body.eat-split-docked.block-editor-page .interface-interface-skeleton {
+                margin-right: 0 !important;
+            }
+        }
     ' );
 
     wp_add_inline_script( 'jquery', '
@@ -311,47 +325,46 @@ function eat_enqueue_split_view( $hook ) {
         var previewUrl = ' . wp_json_encode( $preview_url ) . ';
         var active = false;
 
-        // Toggle button
         var $btn = $("<button>", {
             id: "eat-split-toggle",
             text: "⊞ Split Preview"
         }).appendTo("body");
 
-        function enableSplit() {
-            active = true;
-            $btn.text("✕ Close Preview");
+        function ensureDock() {
+            var $dock = $("#eat-split-dock");
+            if ( $dock.length ) {
+                return $dock;
+            }
 
-            // Move #wpbody-content into the editor pane
-            var $content = $("#wpbody-content");
-            var $root = $("<div>", { id: "eat-split-root" });
-            var $editor = $("<div>", { id: "eat-split-editor" });
-            var $preview = $("<div>", { id: "eat-split-preview" });
+            $dock = $("<div>", { id: "eat-split-dock" });
             var $bar = $("<div>", { id: "eat-split-preview-bar" })
                 .append("<span>Live Preview</span>")
                 .append($("<button>↺ Refresh</button>").on("click", refreshPreview));
             var $iframe = $("<iframe>", { id: "eat-preview-iframe", src: previewUrl });
 
-            $preview.append($bar).append($iframe);
-            $editor.append($content);
-            $root.append($editor).append($preview);
-            $("#wpbody").append($root);
+            $dock.append($bar).append($iframe).appendTo("body");
+            return $dock;
+        }
 
-            $("html, body").css("overflow", "hidden");
+        function enableSplit() {
+            active = true;
+            $btn.text("✕ Close Preview");
+            ensureDock();
+            $("body").addClass("eat-split-docked");
+            refreshPreview();
         }
 
         function disableSplit() {
             active = false;
             $btn.text("⊞ Split Preview");
-
-            var $content = $("#eat-split-editor > #wpbody-content");
-            $("#wpbody-content-placeholder").replaceWith($content);
-            $("#eat-split-root").remove();
-
-            $("html, body").css("overflow", "");
+            $("body").removeClass("eat-split-docked");
         }
 
         function refreshPreview() {
             var $iframe = $("#eat-preview-iframe");
+            if ( ! $iframe.length ) {
+                return;
+            }
             $iframe.attr("src", previewUrl + "&_=" + Date.now());
         }
 
@@ -359,9 +372,8 @@ function eat_enqueue_split_view( $hook ) {
             active ? disableSplit() : enableSplit();
         });
 
-        // Auto-enable for editors reviewing pending posts
         var postStatus = $("input#post_status").val() || "";
-        if ( postStatus === "pending" ) {
+        if ( postStatus === "pending" && window.matchMedia("(min-width: 1025px)").matches ) {
             setTimeout(enableSplit, 400);
         }
     });
