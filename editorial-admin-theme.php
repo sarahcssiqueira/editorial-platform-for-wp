@@ -206,10 +206,10 @@ function eat_render_dashboard_widget() {
 add_action( 'admin_enqueue_scripts', 'eat_enqueue_split_view' );
 function eat_enqueue_split_view( $hook ) {
     if ( ! in_array( $hook, [ 'post.php', 'post-new.php' ], true ) ) return;
-    if ( ! current_user_can( 'publish_posts' ) ) return;
 
     global $post;
     if ( ! $post || ! in_array( $post->post_status, [ 'draft', 'pending', 'changes_requested', 'approved' ], true ) ) return;
+    if ( ! current_user_can( 'edit_post', $post->ID ) ) return;
 
     $preview_url = ew_get_preview_url( $post->ID );
 
@@ -218,23 +218,50 @@ function eat_enqueue_split_view( $hook ) {
 
         #eat-split-toggle {
             position: fixed;
-            bottom: 24px;
+            top: 72px;
             right: 24px;
             z-index: 100001;
-            background: #f5f0e8;
-            color: #000;
-            border: none;
-            padding: 8px 16px;
-            font-size: 12px;
+            background: linear-gradient(135deg, #111827 0%, #374151 100%);
+            color: #f9fafb;
+            border: 1px solid rgba(255,255,255,.16);
+            padding: 9px 14px;
+            font-size: 11px;
+            font-weight: 700;
             letter-spacing: 0.08em;
-            border-radius: 3px;
+            text-transform: uppercase;
+            border-radius: 8px;
             cursor: pointer;
-            font-family: Georgia, serif;
-            box-shadow: 0 2px 12px rgba(0,0,0,.4);
-            transition: background .15s;
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+            box-shadow: 0 10px 28px rgba(17,24,39,.28);
+            transition: transform .12s ease, box-shadow .15s ease, background .15s ease;
         }
 
-        #eat-split-toggle:hover { background: #c9a84c; }
+        #eat-split-toggle::before {
+            content: "";
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            margin-right: 8px;
+            border-radius: 999px;
+            background: #34d399;
+            box-shadow: 0 0 0 4px rgba(52,211,153,.18);
+            vertical-align: -1px;
+        }
+
+        #eat-split-toggle:hover {
+            background: linear-gradient(135deg, #0f172a 0%, #1f2937 100%);
+            box-shadow: 0 12px 34px rgba(15,23,42,.36);
+            transform: translateY(-1px);
+        }
+
+        #eat-split-toggle.eat-toggle-inline {
+            position: static;
+            top: auto;
+            right: auto;
+            margin-left: 8px;
+            box-shadow: none;
+            transform: none !important;
+        }
 
         #eat-split-dock {
             position: fixed;
@@ -330,6 +357,22 @@ function eat_enqueue_split_view( $hook ) {
             text: "⊞ Split Preview"
         }).appendTo("body");
 
+        function placeToggleButton() {
+            var $gutenbergActions = $(".edit-post-header__settings, .editor-header__settings").first();
+            if ( $gutenbergActions.length ) {
+                $btn.addClass("eat-toggle-inline").appendTo($gutenbergActions);
+                return;
+            }
+
+            var $classicActions = $("#submitdiv #publishing-action").first();
+            if ( $classicActions.length ) {
+                $btn.addClass("eat-toggle-inline").appendTo($classicActions);
+                return;
+            }
+
+            $btn.removeClass("eat-toggle-inline").appendTo("body");
+        }
+
         function ensureDock() {
             var $dock = $("#eat-split-dock");
             if ( $dock.length ) {
@@ -371,6 +414,9 @@ function eat_enqueue_split_view( $hook ) {
         $btn.on("click", function(){
             active ? disableSplit() : enableSplit();
         });
+
+        placeToggleButton();
+        $(window).on("resize", placeToggleButton);
 
         var postStatus = $("input#post_status").val() || "";
         if ( postStatus === "pending" && window.matchMedia("(min-width: 1025px)").matches ) {
