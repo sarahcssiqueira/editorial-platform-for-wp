@@ -1,5 +1,10 @@
 # ✦ Editorial for WordPress
 
+[![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
+[![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
+[![Release Version](https://img.shields.io/github/release/sarahcssiqueira/wordcamp-us-26.svg)](https://github.com/sarahcssiqueira/wordcamp-us-26/releases/latest)
+[![Support Level](https://img.shields.io/badge/support-may_take_time-yellow.svg)](#support-level)
+
 A focused editorial product built on top of WordPress core.
 No heavy plugins. No headless layers. Just two plugins and a CSS file.
 
@@ -71,16 +76,35 @@ Author drafts post
 ---
 
 
+## Role features
 
-## Roles
+| Role | What they can do |
+| ---- | ---------------- |
+| Author | Create and edit own posts/pages, submit for review, receive change requests, mark checklist items as done, resubmit for review, publish only after editor approval |
+| Editor | Review pending content, approve, request changes with checklist notes, track revision history, publish approved content |
+| Administrator | Full access to all editorial actions and WordPress admin configuration |
+
+---
 
 
-| Role            | Can do                                    |
-| --------------- | ----------------------------------------- |
-| Author          | Write, edit own posts, submit for review, publish own approved posts |
-| Editor          | Review, approve, request changes, publish approved posts |
-| Administrator   | Everything                                |
+## Preview features
 
+- Internal preview: editors can open split preview and see content side-by-side with the editor.
+- Public preview links: the workflow can generate tokenized preview URLs for unpublished content.
+- No-login preview: anyone with a valid token link can open the preview without a WordPress account.
+- Expiring access: public preview links use a stored token with expiration.
+
+---
+
+
+## Change request communication
+
+- Editors request changes from the review panel and add one change per line.
+- Each request becomes a checklist for the author.
+- Authors can mark checklist items as done as they complete revisions.
+- Resubmission is gated until all checklist items are done.
+- Once resubmitted, the post returns to `pending` for editor review.
+- Notifications are sent by email (and optionally Slack) when review is requested or changes are requested.
 
 ---
 
