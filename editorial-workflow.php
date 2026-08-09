@@ -136,15 +136,21 @@ function ew_submit_for_review_button( $post ) {
     if ( ew_user_is_reviewer() ) return;
 
     $status = get_post_status( $post->ID );
-    if ( in_array( $status, [ 'publish', 'pending', 'approved', 'changes_requested' ], true ) ) return;
+    if ( in_array( $status, [ 'publish', 'pending', 'approved' ], true ) ) return;
+
+    $is_resubmission = $status === 'changes_requested';
+    $can_resubmit    = ! $is_resubmission || ew_post_is_ready_for_resubmission( $post->ID );
 
     wp_nonce_field( 'ew_submit_review_' . $post->ID, 'ew_submit_review_nonce' );
     ?>
     <div class="misc-pub-section ew-submit-section">
         <button type="submit" name="ew_submit_for_review" value="1"
-                class="button button-primary ew-submit-btn">
-            ✦ Submit for Review
+                class="button button-primary ew-submit-btn"<?php disabled( $can_resubmit, false ); ?>>
+            <?php echo esc_html( $is_resubmission ? '✦ Submit for Review Again' : '✦ Submit for Review' ); ?>
         </button>
+        <?php if ( $is_resubmission && ! $can_resubmit ) : ?>
+        <p style="margin:8px 0 0;color:#6b7280;">Mark every requested change as done before resubmitting.</p>
+        <?php endif; ?>
     </div>
     <?php
 }
@@ -160,11 +166,17 @@ function ew_handle_submit_for_review( $post_id, $post ) {
 }
 
 function ew_process_submit_for_review( $post_id ) {
+    if ( get_post_status( $post_id ) === 'changes_requested' && ! ew_post_is_ready_for_resubmission( $post_id ) ) {
+        return new WP_Error( 'changes_incomplete', __( 'Mark every requested change as done before resubmitting.', 'editorial' ) );
+    }
+
     remove_action( 'save_post', 'ew_handle_submit_for_review', 10 );
     wp_update_post( [ 'ID' => $post_id, 'post_status' => 'pending' ] );
     add_action( 'save_post', 'ew_handle_submit_for_review', 10, 2 );
 
     ew_notify_editors_review_requested( $post_id );
+
+    return true;
 }
 
 add_action( 'transition_post_status', 'ew_notify_editors_when_pending', 10, 3 );
@@ -281,6 +293,7 @@ function ew_render_feedback_metabox( $post ) {
     ] );
 
     $active_request      = ew_get_active_change_request_comment( $post->ID );
+    $active_request_data = ew_get_active_change_request_data( $post->ID );
     $active_request_id   = $active_request ? (int) $active_request->comment_ID : 0;
     $can_mark_done       = ew_current_user_can_resolve_change_requests( $post );
     $current_status      = get_post_status( $post->ID );
@@ -333,21 +346,25 @@ function ew_render_feedback_metabox( $post ) {
     echo '<p class="ew-change-batch-title">Open Changes</p>';
     echo '<p class="ew-change-batch-meta">Current status: ' . esc_html( ew_status_label( $current_status ) ) . '</p>';
     echo '</div>';
-    if ( $active_request ) {
-        $active_items = ew_get_change_request_items( $active_request );
+    if ( ! empty( $active_request_data['items'] ) ) {
+        $active_items = $active_request_data['items'];
         $active_open_items = array_values( array_filter( $active_items, fn( $item ) => ( $item['status'] ?? 'open' ) !== 'done' ) );
         echo '<span class="ew-change-batch-status">' . esc_html( count( $active_open_items ) ) . ' open</span>';
     }
     echo '</div>';
 
-    if ( $active_request ) {
-        $items           = ew_get_change_request_items( $active_request );
+    if ( ! empty( $active_request_data['items'] ) ) {
+        $items           = $active_request_data['items'];
         $open_items      = array_values( array_filter( $items, fn( $item ) => ( $item['status'] ?? 'open' ) !== 'done' ) );
-        $requested_by    = $active_request->comment_author ?: 'Editor';
-        $requested_at    = mysql2date( 'M j, Y g:i a', $active_request->comment_date );
-        $request_summary = trim( (string) $active_request->comment_content );
+        $requested_by    = $active_request_data['requested_by'];
+        $requested_at    = $active_request_data['requested_at'];
+        $request_summary = $active_request_data['summary'];
 
-        echo '<p class="ew-change-batch-meta">Requested by ' . esc_html( $requested_by ) . ' on ' . esc_html( $requested_at ) . '</p>';
+        if ( $requested_at !== '' ) {
+            echo '<p class="ew-change-batch-meta">Requested by ' . esc_html( $requested_by ) . ' on ' . esc_html( $requested_at ) . '</p>';
+        } else {
+            echo '<p class="ew-change-batch-meta">Requested by ' . esc_html( $requested_by ) . '</p>';
+        }
 
         if ( $request_summary !== '' ) {
             echo '<p class="ew-change-note">' . esc_html( $request_summary ) . '</p>';
@@ -542,6 +559,7 @@ function ew_process_review_action( $post_id, $action, $note ) {
 
         wp_update_post( [ 'ID' => $post_id, 'post_status' => 'changes_requested' ] );
         update_post_meta( $post_id, '_ew_review_note', $note );
+        update_post_meta( $post_id, '_ew_active_change_items', array_values( $items ) );
         $comment_id = ew_add_change_request_comment( $post_id, $note, $items );
         if ( $comment_id ) {
             update_post_meta( $post_id, '_ew_active_change_request_id', $comment_id );
@@ -630,6 +648,18 @@ function ew_update_change_request_items( $comment_id, $items ) {
     update_comment_meta( $comment_id, '_ew_items', array_values( $items ) );
 }
 
+function ew_get_active_change_request_items_meta( $post_id ) {
+    $items = get_post_meta( $post_id, '_ew_active_change_items', true );
+    if ( ! is_array( $items ) || empty( $items ) ) return [];
+
+    $items = array_map( 'ew_normalize_change_request_item', $items );
+    return array_values( array_filter( $items ) );
+}
+
+function ew_update_active_change_request_items_meta( $post_id, $items ) {
+    update_post_meta( $post_id, '_ew_active_change_items', array_values( $items ) );
+}
+
 function ew_change_request_items_are_complete( $items ) {
     if ( empty( $items ) ) return false;
 
@@ -642,14 +672,106 @@ function ew_change_request_items_are_complete( $items ) {
     return true;
 }
 
-function ew_get_active_change_request_comment( $post_id ) {
+function ew_get_tracked_change_request_comment( $post_id ) {
     $active_comment_id = absint( get_post_meta( $post_id, '_ew_active_change_request_id', true ) );
+    if ( ! $active_comment_id ) return null;
 
-    if ( $active_comment_id ) {
-        $active_comment = get_comment( $active_comment_id );
-        if ( $active_comment && (int) $active_comment->comment_post_ID === (int) $post_id && $active_comment->comment_type === 'editorial_change_request' ) {
-            $items = ew_get_change_request_items( $active_comment );
-            if ( ! empty( $items ) && ! ew_change_request_items_are_complete( $items ) ) {
+    $active_comment = get_comment( $active_comment_id );
+    if ( ! $active_comment ) return null;
+    if ( (int) $active_comment->comment_post_ID !== (int) $post_id ) return null;
+    if ( $active_comment->comment_type !== 'editorial_change_request' ) return null;
+
+    return $active_comment;
+}
+
+function ew_post_is_ready_for_resubmission( $post_id ) {
+    $items = ew_get_active_change_request_items_meta( $post_id );
+    if ( empty( $items ) ) {
+        $active_comment = ew_get_tracked_change_request_comment( $post_id );
+        if ( ! $active_comment ) return false;
+
+        $items = ew_get_change_request_items( $active_comment );
+    }
+
+    return ew_change_request_items_are_complete( $items );
+}
+
+function ew_get_active_change_request_data( $post_id ) {
+    $active_comment = ew_get_active_change_request_comment( $post_id );
+    if ( $active_comment ) {
+        return [
+            'items'        => ew_get_change_request_items( $active_comment ),
+            'summary'      => trim( (string) $active_comment->comment_content ),
+            'requested_by' => $active_comment->comment_author ?: 'Editor',
+            'requested_at' => mysql2date( 'M j, Y g:i a', $active_comment->comment_date ),
+        ];
+    }
+
+    $items = ew_get_active_change_request_items_meta( $post_id );
+    $summary = trim( (string) get_post_meta( $post_id, '_ew_review_note', true ) );
+    if ( $summary === '' ) {
+        $summary = trim( (string) ew_get_latest_change_request_note( $post_id ) );
+    }
+
+    if ( empty( $items ) && get_post_status( $post_id ) === 'changes_requested' ) {
+        $items = ew_parse_change_request_items( $summary );
+        if ( ! empty( $items ) ) {
+            ew_update_active_change_request_items_meta( $post_id, $items );
+        }
+    }
+
+    return [
+        'items'        => $items,
+        'summary'      => $summary,
+        'requested_by' => 'Editor',
+        'requested_at' => '',
+    ];
+}
+
+function ew_recover_active_change_request_comment( $post_id ) {
+    if ( get_post_status( $post_id ) !== 'changes_requested' ) return null;
+
+    $latest_note = trim( (string) get_post_meta( $post_id, '_ew_review_note', true ) );
+    if ( $latest_note === '' ) {
+        $latest_comment_note = ew_get_latest_change_request_note( $post_id );
+        $latest_note = trim( (string) $latest_comment_note );
+    }
+
+    $items = ew_parse_change_request_items( $latest_note );
+    if ( empty( $items ) ) return null;
+
+    $post   = get_post( $post_id );
+    $author = $post ? get_userdata( $post->post_author ) : null;
+
+    $comment_id = wp_insert_comment( [
+        'comment_post_ID'      => $post_id,
+        'comment_content'      => $latest_note,
+        'comment_type'         => 'editorial_change_request',
+        'comment_approved'     => 1,
+        'user_id'              => 0,
+        'comment_author'       => $author ? $author->display_name : 'Editorial Workflow',
+        'comment_author_email' => $author ? $author->user_email : '',
+    ] );
+
+    if ( ! $comment_id ) return null;
+
+    add_comment_meta( $comment_id, '_ew_internal', 1, true );
+    add_comment_meta( $comment_id, '_ew_items', array_values( $items ), true );
+    update_post_meta( $post_id, '_ew_active_change_request_id', $comment_id );
+
+    return get_comment( $comment_id );
+}
+
+function ew_get_active_change_request_comment( $post_id ) {
+    $active_comment = ew_get_tracked_change_request_comment( $post_id );
+    if ( $active_comment ) {
+        $items = ew_get_change_request_items( $active_comment );
+        if ( ! empty( $items ) ) {
+            if ( ! ew_change_request_items_are_complete( $items ) ) {
+                return $active_comment;
+            }
+
+            if ( get_post_status( $post_id ) === 'changes_requested' ) {
                 return $active_comment;
             }
         }
@@ -672,7 +794,14 @@ function ew_get_active_change_request_comment( $post_id ) {
         }
     }
 
-    delete_post_meta( $post_id, '_ew_active_change_request_id' );
+    $recovered_comment = ew_recover_active_change_request_comment( $post_id );
+    if ( $recovered_comment ) {
+        return $recovered_comment;
+    }
+
+    if ( get_post_status( $post_id ) !== 'changes_requested' ) {
+        delete_post_meta( $post_id, '_ew_active_change_request_id' );
+    }
     return null;
 }
 
@@ -700,15 +829,20 @@ function ew_handle_change_resolution( $post_id, $post ) {
 
 function ew_process_change_resolution( $post_id, $submitted_request_id, $completed_ids ) {
     $active_request = ew_get_active_change_request_comment( $post_id );
-    if ( ! $active_request ) {
+    $items          = ew_get_active_change_request_items_meta( $post_id );
+
+    if ( empty( $items ) && $active_request ) {
+        $items = ew_get_change_request_items( $active_request );
+    }
+
+    if ( empty( $items ) ) {
         return new WP_Error( 'missing_request', __( 'No active change request was found.', 'editorial' ) );
     }
 
-    if ( $submitted_request_id !== (int) $active_request->comment_ID ) {
+    if ( $active_request && $submitted_request_id !== (int) $active_request->comment_ID ) {
         return new WP_Error( 'request_mismatch', __( 'The active change request changed. Reload and try again.', 'editorial' ) );
     }
 
-    $items      = ew_get_change_request_items( $active_request );
     $user       = wp_get_current_user();
     $did_change = false;
 
@@ -728,16 +862,9 @@ function ew_process_change_resolution( $post_id, $submitted_request_id, $complet
         return new WP_Error( 'no_items_selected', __( 'Select at least one change item to mark done.', 'editorial' ) );
     }
 
-    ew_update_change_request_items( $active_request->comment_ID, $items );
-
-    if ( ew_change_request_items_are_complete( $items ) ) {
-        delete_post_meta( $post_id, '_ew_active_change_request_id' );
-
-        if ( get_post_status( $post_id ) === 'changes_requested' ) {
-            remove_action( 'save_post', 'ew_handle_change_resolution', 10 );
-            wp_update_post( [ 'ID' => $post_id, 'post_status' => 'pending' ] );
-            add_action( 'save_post', 'ew_handle_change_resolution', 10, 2 );
-        }
+    ew_update_active_change_request_items_meta( $post_id, $items );
+    if ( $active_request ) {
+        ew_update_change_request_items( $active_request->comment_ID, $items );
     }
 
     return true;
@@ -758,7 +885,10 @@ function ew_ajax_submit_for_review() {
         wp_send_json_error( [ 'message' => __( 'Security check failed.', 'editorial' ) ], 403 );
     }
 
-    ew_process_submit_for_review( $post_id );
+    $result = ew_process_submit_for_review( $post_id );
+    if ( is_wp_error( $result ) ) {
+        wp_send_json_error( [ 'message' => $result->get_error_message() ], 400 );
+    }
 
     wp_send_json_success( [ 'redirect' => get_edit_post_link( $post_id, 'raw' ) ] );
 }
