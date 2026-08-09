@@ -52,7 +52,8 @@ add_action( 'init', 'ew_set_role_capabilities' );
 function ew_set_role_capabilities() {
     $author = get_role( 'author' );
     if ( $author ) {
-        $author->add_cap( 'publish_posts' );
+        // Writers should not publish directly; publishing is unlocked only after approval.
+        $author->remove_cap( 'publish_posts' );
     }
     $editor = get_role( 'editor' );
     if ( $editor ) {
@@ -68,12 +69,59 @@ function ew_user_is_reviewer() {
 
 function ew_user_can_publish_post( $post_id ) {
     $post = get_post( $post_id );
-    if ( ! $post || ! current_user_can( 'publish_posts' ) ) return false;
-    if ( ew_user_is_reviewer() ) return true;
+    if ( ! $post ) return false;
+    if ( ew_user_is_reviewer() ) return current_user_can( 'publish_posts' );
 
     return get_post_status( $post_id ) === 'approved'
         && (int) $post->post_author === (int) get_current_user_id()
         && current_user_can( 'edit_post', $post_id );
+}
+
+/**
+ * Finds the current post ID from capability args or the edit screen request.
+ */
+function ew_get_request_post_id( $args = [] ) {
+    if ( isset( $args[2] ) && is_numeric( $args[2] ) ) {
+        return (int) $args[2];
+    }
+
+    if ( isset( $_POST['post_ID'] ) && is_numeric( $_POST['post_ID'] ) ) {
+        return (int) $_POST['post_ID'];
+    }
+
+    if ( isset( $_GET['post'] ) && is_numeric( $_GET['post'] ) ) {
+        return (int) $_GET['post'];
+    }
+
+    return 0;
+}
+
+add_filter( 'user_has_cap', 'ew_grant_publish_cap_for_approved_posts', 10, 4 );
+function ew_grant_publish_cap_for_approved_posts( $allcaps, $caps, $args, $user ) {
+    if ( ! is_admin() ) return $allcaps;
+    if ( ! isset( $user->ID ) || ! $user->ID ) return $allcaps;
+    if ( ew_user_is_reviewer() ) return $allcaps;
+    if ( ! empty( $allcaps['publish_posts'] ) ) return $allcaps;
+
+    $checking_publish_cap = in_array( 'publish_posts', (array) $caps, true ) || in_array( 'publish_post', (array) $caps, true );
+    if ( ! $checking_publish_cap ) return $allcaps;
+
+    $post_id = ew_get_request_post_id( $args );
+    if ( ! $post_id ) return $allcaps;
+
+    $post = get_post( $post_id );
+    if ( ! $post ) return $allcaps;
+
+    $is_own_approved = (int) $post->post_author === (int) $user->ID
+        && get_post_status( $post_id ) === 'approved'
+        && in_array( $post->post_type, [ 'post', 'page' ], true )
+        && user_can( $user, 'edit_post', $post_id );
+
+    if ( $is_own_approved ) {
+        $allcaps['publish_posts'] = true;
+    }
+
+    return $allcaps;
 }
 
 
@@ -257,8 +305,15 @@ function ew_render_review_metabox( $post ) {
 add_filter( 'wp_insert_post_data', 'ew_intercept_editor_publish', 10, 2 );
 function ew_intercept_editor_publish( $data, $postarr ) {
     if ( ! is_admin() ) return $data;
-    if ( ! current_user_can( 'publish_posts' ) ) return $data;
     if ( ! in_array( $data['post_type'] ?? '', [ 'post', 'page' ], true ) ) return $data;
+
+    $target_status = $data['post_status'] ?? '';
+    if ( ! ew_user_is_reviewer() && in_array( $target_status, [ 'approved', 'changes_requested' ], true ) ) {
+        $current_status = ! empty( $postarr['ID'] ) ? get_post_status( (int) $postarr['ID'] ) : '';
+        if ( ! in_array( $current_status, [ 'approved', 'changes_requested' ], true ) ) {
+            $data['post_status'] = 'pending';
+        }
+    }
 
     $publish_clicked = isset( $_POST['publish'] );
     if ( empty( $postarr['ID'] ) ) {
@@ -421,7 +476,7 @@ function ew_inject_status_js() {
                 var currentStatus = $('#post_status').val() || '';
                 var isReviewer = <?php echo wp_json_encode( $is_reviewer ); ?>;
                 var canPublish = <?php echo wp_json_encode( $can_publish ); ?>;
-                var buttonLabel = (isReviewer || canPublish || currentStatus === 'approved') ? 'Publish' : 'Submit for Review';
+                var buttonLabel = (isReviewer || canPublish) ? 'Publish' : 'Submit for Review';
                 $publishButton.val(buttonLabel).text(buttonLabel);
             }
 
