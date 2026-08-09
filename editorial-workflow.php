@@ -255,10 +255,26 @@ function ew_notify_author_changes_requested( $post_id, $note ) {
 
 function ew_slack_notify( $message ) {
     if ( ! defined( 'EDITORIAL_SLACK_WEBHOOK' ) ) return;
-    wp_remote_post( EDITORIAL_SLACK_WEBHOOK, [
+
+    $response = wp_remote_post( EDITORIAL_SLACK_WEBHOOK, [
         'headers' => [ 'Content-Type' => 'application/json' ],
         'body'    => wp_json_encode( [ 'text' => $message ] ),
+        'timeout' => 4,
     ] );
+
+    // Keep editorial actions resilient: only log webhook issues in debug mode.
+    if ( ! defined( 'WP_DEBUG' ) || ! WP_DEBUG ) return;
+
+    if ( is_wp_error( $response ) ) {
+        error_log( 'Editorial Slack notify failed: ' . $response->get_error_message() );
+        return;
+    }
+
+    $status_code = (int) wp_remote_retrieve_response_code( $response );
+    if ( $status_code < 200 || $status_code >= 300 ) {
+        $body = (string) wp_remote_retrieve_body( $response );
+        error_log( 'Editorial Slack notify returned HTTP ' . $status_code . '. Body: ' . substr( $body, 0, 300 ) );
+    }
 }
 
 
