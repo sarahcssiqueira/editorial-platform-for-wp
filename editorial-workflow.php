@@ -221,7 +221,7 @@ function ew_notify_editors_review_requested( $post_id ) {
     $post     = get_post( $post_id );
     $author   = get_userdata( $post->post_author );
     $edit_url = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
-    $preview  = ew_get_preview_url( $post_id );
+    $preview  = ew_get_public_preview_url( $post_id );
     $reviewers = get_users( [
         'role__in' => ew_get_editor_role_slugs(),
         'fields'   => [ 'user_email' ],
@@ -243,11 +243,12 @@ function ew_notify_author_changes_requested( $post_id, $note ) {
     $author   = get_userdata( $post->post_author );
     $editor   = wp_get_current_user();
     $edit_url = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
+    $preview  = ew_get_public_preview_url( $post_id );
 
     wp_mail( $author->user_email,
         sprintf( '[Changes Requested] %s', $post->post_title ),
-        sprintf( "Hi %s,\n\n%s reviewed \"%s\" and requested changes:\n\n—\n%s\n—\n\nEdit: %s",
-            $author->display_name, $editor->display_name, $post->post_title, $note, $edit_url )
+        sprintf( "Hi %s,\n\n%s reviewed \"%s\" and requested changes:\n\n—\n%s\n—\n\nPreview: %s\nEdit: %s",
+            $author->display_name, $editor->display_name, $post->post_title, $note, $preview, $edit_url )
     );
     ew_slack_notify( sprintf( '↩ *Changes requested:* <%s|%s> by %s', $edit_url, $post->post_title, $editor->display_name ) );
 }
@@ -294,6 +295,12 @@ function ew_output_change_request_styles() {
         .ew-change-actions { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:12px; }
         .ew-change-help { margin:0; color:#6b7280; font-size:12px; }
         .ew-change-note { margin:0 0 12px; color:#374151; }
+        .ew-share-preview { border:1px solid #e5e7eb; background:#f8fafc; border-radius:8px; padding:12px; }
+        .ew-share-preview-title { margin:0 0 4px; font-size:12px; font-weight:700; color:#111827; }
+        .ew-share-preview-help { margin:0 0 8px; font-size:12px; color:#6b7280; }
+        .ew-share-preview-row { display:flex; gap:8px; align-items:center; }
+        .ew-share-preview-input { flex:1; font-size:12px; padding:6px 8px; border:1px solid #d1d5db; border-radius:6px; background:#fff; }
+        .ew-share-preview-copy { white-space:nowrap; }
     </style>
     <?php
 }
@@ -324,6 +331,7 @@ function ew_render_feedback_metabox( $post ) {
     $current_status      = get_post_status( $post->ID );
     $latest_note         = ew_get_latest_change_request_note( $post->ID );
     $preview_url         = ew_get_preview_url( $post->ID );
+    $public_preview_url  = ew_get_public_preview_url( $post->ID );
     $can_publish         = ew_user_can_publish_post( $post->ID );
     $is_reviewer         = ew_user_is_reviewer();
 
@@ -333,6 +341,17 @@ function ew_render_feedback_metabox( $post ) {
     }
 
     echo '<div class="ew-change-requests">';
+    if ( $public_preview_url ) {
+        echo '<div class="ew-share-preview">';
+        echo '<p class="ew-share-preview-title">Share Public Preview</p>';
+        echo '<p class="ew-share-preview-help">Anyone with this link can preview the post without logging in.</p>';
+        echo '<div class="ew-share-preview-row">';
+        echo '<input type="text" class="ew-share-preview-input" readonly value="' . esc_attr( $public_preview_url ) . '">';
+        echo '<button type="button" class="button ew-share-preview-copy" data-preview-url="' . esc_attr( $public_preview_url ) . '">Copy Link</button>';
+        echo '</div>';
+        echo '</div>';
+    }
+
     if ( $is_reviewer ) {
         echo '<div class="ew-change-batch is-active">';
         echo '<div class="ew-change-batch-header">';
@@ -1001,6 +1020,115 @@ function ew_get_latest_change_request_note( $post_id ) {
 // 6. PREVIEW URL HELPER
 // ════════════════════════════════════════════════════════════════════════════
 
+function ew_get_public_preview_ttl() {
+    return (int) apply_filters( 'ew_public_preview_ttl', WEEK_IN_SECONDS * 2 );
+}
+
+function ew_get_public_preview_token( $post_id ) {
+    $token   = (string) get_post_meta( $post_id, '_ew_public_preview_token', true );
+    $expires = (int) get_post_meta( $post_id, '_ew_public_preview_expires', true );
+
+    if ( $token !== '' && $expires > time() ) {
+        return $token;
+    }
+
+    $token = wp_generate_password( 32, false, false );
+    update_post_meta( $post_id, '_ew_public_preview_token', $token );
+    update_post_meta( $post_id, '_ew_public_preview_expires', time() + max( 3600, ew_get_public_preview_ttl() ) );
+
+    return $token;
+}
+
+function ew_get_public_preview_url( $post_id ) {
+    $post = get_post( $post_id );
+    if ( ! $post ) return '';
+
+    $token = ew_get_public_preview_token( $post_id );
+
+    // Do not use WordPress core preview params here; they trigger auth checks.
+    $base_url = home_url( '/?p=' . $post_id );
+
+    return add_query_arg( [
+        'ew_public_preview' => '1',
+        'preview_id'        => $post_id,
+        'ew_preview_token'  => $token,
+    ], $base_url );
+}
+
+function ew_is_public_preview_request() {
+    return isset( $_GET['ew_public_preview'], $_GET['ew_preview_token'], $_GET['preview_id'] );
+}
+
+function ew_public_preview_post_id() {
+    return absint( $_GET['preview_id'] ?? 0 );
+}
+
+function ew_public_preview_token_is_valid( $post_id, $token ) {
+    $expected = (string) get_post_meta( $post_id, '_ew_public_preview_token', true );
+    $expires  = (int) get_post_meta( $post_id, '_ew_public_preview_expires', true );
+
+    if ( $expected === '' || $expires <= time() ) {
+        return false;
+    }
+
+    return hash_equals( $expected, (string) $token );
+}
+
+add_action( 'pre_get_posts', 'ew_allow_public_preview_query' );
+function ew_allow_public_preview_query( $query ) {
+    if ( is_admin() || ! $query->is_main_query() ) return;
+    if ( ! ew_is_public_preview_request() ) return;
+
+    $post_id = ew_public_preview_post_id();
+    if ( ! $post_id ) return;
+
+    $query->set( 'p', $post_id );
+    $query->set( 'post_type', [ 'post', 'page' ] );
+    $query->set( 'post_status', [ 'draft', 'pending', 'changes_requested', 'approved', 'future', 'publish' ] );
+    $query->set( 'posts_per_page', 1 );
+}
+
+add_filter( 'posts_results', 'ew_filter_public_preview_results', 10, 2 );
+function ew_filter_public_preview_results( $posts, $query ) {
+    if ( is_admin() || ! $query->is_main_query() ) return $posts;
+    if ( ! ew_is_public_preview_request() ) return $posts;
+
+    $post_id = ew_public_preview_post_id();
+    $token   = sanitize_text_field( wp_unslash( $_GET['ew_preview_token'] ?? '' ) );
+
+    if ( ! $post_id || $token === '' ) {
+        return [];
+    }
+
+    foreach ( $posts as $post ) {
+        if ( (int) $post->ID !== (int) $post_id ) {
+            continue;
+        }
+
+        if ( ew_public_preview_token_is_valid( $post_id, $token ) ) {
+            return $posts;
+        }
+
+        break;
+    }
+
+    return [];
+}
+
+add_filter( 'redirect_canonical', 'ew_disable_public_preview_canonical', 10, 2 );
+function ew_disable_public_preview_canonical( $redirect_url, $requested_url ) {
+    if ( ew_is_public_preview_request() ) {
+        return false;
+    }
+    return $redirect_url;
+}
+
+add_action( 'wp_head', 'ew_public_preview_noindex' );
+function ew_public_preview_noindex() {
+    if ( ! ew_is_public_preview_request() ) return;
+    echo '<meta name="robots" content="noindex,nofollow" />' . "\n";
+}
+
 function ew_get_preview_url( $post_id ) {
     $post = get_post( $post_id );
     if ( ! $post ) return '';
@@ -1204,6 +1332,31 @@ jQuery(function($){
             ew_completed_items: $('input[name="ew_completed_items[]"]:checked').map(function(){ return $(this).val(); }).get(),
             nonce: $('input[name="ew_change_resolution_nonce"]').val() || ''
         });
+    });
+
+    $(document).on('click', '.ew-share-preview-copy', function(event){
+        event.preventDefault();
+
+        var $btn = $(this);
+        var url = $btn.data('preview-url') || '';
+        if ( ! url ) {
+            return;
+        }
+
+        function markCopied() {
+            var original = $btn.text();
+            $btn.text('Copied');
+            setTimeout(function(){ $btn.text(original); }, 1200);
+        }
+
+        if ( navigator.clipboard && navigator.clipboard.writeText ) {
+            navigator.clipboard.writeText(url).then(markCopied).catch(function(){
+                window.prompt('Copy this preview URL:', url);
+            });
+            return;
+        }
+
+        window.prompt('Copy this preview URL:', url);
     });
 });
 JS
