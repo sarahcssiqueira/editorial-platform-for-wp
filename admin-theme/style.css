@@ -142,6 +142,12 @@ body.wp-admin {
     margin-left: var(--e-sidebar-w) !important;
 }
 
+.folded #adminmenuback,
+.folded #adminmenuwrap,
+.folded #adminmenu {
+    width: 36px !important;
+}
+
 .folded #wpcontent,
 .folded #wpfooter {
     margin-left: 36px !important;
@@ -596,8 +602,9 @@ body.wp-admin {
     align-self: flex-start;
 }
 
-.ew-status-in_review         { background: var(--e-amber-dim); color: var(--e-amber); border: 1px solid rgba(217,119,6,.18); }
-.ew-status-changes_requested { background: var(--e-red-dim);   color: var(--e-red);   border: 1px solid rgba(220,38,38,.18); }
+.ew-status-pending           { background: var(--e-amber-dim); color: var(--e-amber); border: 1px solid rgba(217,119,6,.18); }
+.ew-status-rejected          { background: var(--e-red-dim);   color: var(--e-red);   border: 1px solid rgba(220,38,38,.18); }
+.ew-status-approved          { background: var(--e-green-dim); color: var(--e-green); border: 1px solid rgba(22,163,74,.18); }
 .ew-status-publish           { background: var(--e-green-dim); color: var(--e-green); border: 1px solid rgba(22,163,74,.18); }
 .ew-status-draft             { background: var(--e-surface-2); color: var(--e-text-3); border: 1px solid var(--e-border-1); }
 .ew-status-future            { background: var(--e-blue-dim);  color: var(--e-blue);  border: 1px solid rgba(37,99,235,.18); }
