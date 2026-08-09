@@ -497,9 +497,17 @@ function ew_intercept_editor_publish( $data, $postarr ) {
     if ( ! in_array( $data['post_type'] ?? '', [ 'post', 'page' ], true ) ) return $data;
 
     $target_status = $data['post_status'] ?? '';
-    if ( ! ew_user_is_reviewer() && in_array( $target_status, [ 'approved', 'changes_requested' ], true ) ) {
-        $current_status = ! empty( $postarr['ID'] ) ? get_post_status( (int) $postarr['ID'] ) : '';
-        if ( ! in_array( $current_status, [ 'approved', 'changes_requested' ], true ) ) {
+    if ( ! ew_user_is_reviewer() && ! empty( $postarr['ID'] ) ) {
+        $post_id         = (int) $postarr['ID'];
+        $current_status  = get_post_status( $post_id );
+
+        if ( $target_status === 'approved' ) {
+            // Writers can keep already-approved posts approved while editing,
+            // but they must never promote a changes-requested post to approved.
+            if ( $current_status !== 'approved' ) {
+                $data['post_status'] = $current_status === 'changes_requested' ? 'changes_requested' : 'pending';
+            }
+        } elseif ( $target_status === 'changes_requested' && $current_status !== 'changes_requested' ) {
             $data['post_status'] = 'pending';
         }
     }
