@@ -154,8 +154,9 @@ function eat_setup_dashboard() {
 }
 
 function eat_render_dashboard_widget() {
-    $pending  = get_posts( [ 'post_status' => 'pending',  'numberposts' => 10, 'orderby' => 'modified', 'order' => 'DESC' ] );
+    $pending  = get_posts( [ 'post_status' => 'pending', 'numberposts' => 10, 'orderby' => 'modified', 'order' => 'DESC' ] );
     $changes_requested = get_posts( [ 'post_status' => 'changes_requested', 'numberposts' => 10, 'orderby' => 'modified', 'order' => 'DESC' ] );
+    $approved = get_posts( [ 'post_status' => 'approved', 'numberposts' => 10, 'orderby' => 'modified', 'order' => 'DESC' ] );
     ?>
     <div class="eat-dashboard-queue">
         <?php if ( ! empty( $pending ) ) : ?>
@@ -178,6 +179,17 @@ function eat_render_dashboard_widget() {
             <div class="eat-queue-item">
                 <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $post->ID . '&action=edit' ) ); ?>"><?php echo esc_html( $post->post_title ?: '(Untitled)' ); ?></a>
                 <span class="eat-queue-meta"><?php echo human_time_diff( strtotime( $post->post_modified ) ); ?> ago</span>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+        <?php if ( ! empty( $approved ) ) : ?>
+        <div class="eat-queue-group eat-queue-approved">
+            <div class="eat-queue-label">Approved (<?php echo count( $approved ); ?>)</div>
+            <?php foreach ( $approved as $post ) : ?>
+            <div class="eat-queue-item">
+                <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $post->ID . '&action=edit' ) ); ?>"><?php echo esc_html( $post->post_title ?: '(Untitled)' ); ?></a>
+                <span class="eat-queue-meta"><?php echo esc_html( get_the_author_meta( 'display_name', $post->post_author ) ); ?> · ready to publish</span>
             </div>
             <?php endforeach; ?>
         </div>

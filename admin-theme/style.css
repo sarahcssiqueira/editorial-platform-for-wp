@@ -798,6 +798,7 @@ body.wp-admin {
     gap: 10px;
 }
 
+.eat-queue-approved .eat-queue-label { color: var(--e-green); }
 .eat-queue-item:last-child { border-bottom: none; }
 
 .eat-queue-item a {
