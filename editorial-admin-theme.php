@@ -11,6 +11,17 @@
 
 defined( 'ABSPATH' ) || exit;
 
+function eat_get_theme_preference_meta_key() {
+    return 'eat_theme_preference';
+}
+
+function eat_get_theme_preference( $user_id = 0 ) {
+    $user_id = $user_id ?: get_current_user_id();
+    $preference = get_user_meta( $user_id, eat_get_theme_preference_meta_key(), true );
+
+    return $preference === 'dark' ? 'dark' : 'light';
+}
+
 function eat_get_writer_role_slugs() {
     return [ 'author' ];
 }
@@ -45,12 +56,85 @@ function eat_user_is_admin( $user = null ) {
 // ════════════════════════════════════════════════════════════════════════════
 
 add_action( 'admin_enqueue_scripts', 'eat_enqueue_styles' );
-function eat_enqueue_styles() {
+function eat_enqueue_styles( $hook = '' ) {
     wp_enqueue_style(
         'editorial-admin-theme',
         plugins_url( 'admin-theme/style.css', __FILE__ ),
         [ 'wp-admin' ],
         '1.0.0'
+    );
+
+    if ( $hook !== 'index.php' ) return;
+
+    wp_enqueue_script( 'jquery' );
+
+    $theme = eat_get_theme_preference();
+    $nonce = wp_create_nonce( 'eat_set_theme_preference' );
+
+    wp_add_inline_script(
+        'jquery',
+        'window.eatDashboardTheme = ' . wp_json_encode( [
+            'nonce'   => $nonce,
+            'current' => $theme,
+            'labels'  => [
+                'light' => __( 'Light mode', 'editorial' ),
+                'dark'  => __( 'Dark mode', 'editorial' ),
+            ],
+        ] ) . ';',
+        'before'
+    );
+
+    wp_add_inline_script( 'jquery', <<<'JS'
+jQuery(function($){
+    if ( typeof window.eatDashboardTheme === 'undefined' ) {
+        return;
+    }
+
+    var settings = window.eatDashboardTheme;
+    var $button = $('.eat-dashboard-theme-toggle');
+
+    if ( ! $button.length ) {
+        return;
+    }
+
+    function getNextTheme(theme) {
+        return theme === 'dark' ? 'light' : 'dark';
+    }
+
+    function applyTheme(theme) {
+        var nextTheme = getNextTheme(theme);
+        $('body').removeClass('eat-theme-light eat-theme-dark').addClass('eat-theme-' + theme);
+        $button.attr('data-current-theme', theme);
+        $button.attr('data-next-theme', nextTheme);
+        $button.attr('aria-pressed', theme === 'dark' ? 'true' : 'false');
+        $button.find('.eat-dashboard-theme-toggle-label').text(settings.labels[nextTheme] || nextTheme);
+    }
+
+    applyTheme(settings.current);
+
+    $button.on('click', function(){
+        var currentTheme = $button.attr('data-current-theme') || settings.current || 'light';
+        var nextTheme = getNextTheme(currentTheme);
+
+        $button.prop('disabled', true).addClass('is-loading');
+
+        $.post(ajaxurl, {
+            action: 'eat_set_theme_preference',
+            nonce: settings.nonce,
+            preference: nextTheme
+        }).done(function(response){
+            if ( ! response || ! response.success || ! response.data || ! response.data.preference ) {
+                return;
+            }
+
+            settings.current = response.data.preference;
+            applyTheme(response.data.preference);
+        }).always(function(){
+            $button.prop('disabled', false).removeClass('is-loading');
+        });
+    });
+});
+JS
     );
 }
 
@@ -87,7 +171,25 @@ function eat_body_class( $classes ) {
     if ( eat_user_is_writer( $user ) )        $classes .= ' eat-writer';
     elseif ( eat_user_is_editor( $user ) )    $classes .= ' eat-editor';
     elseif ( eat_user_is_admin( $user ) )     $classes .= ' eat-admin';
+    $classes .= ' eat-theme-' . eat_get_theme_preference( $user->ID ?: 0 );
     return $classes;
+}
+
+add_action( 'wp_ajax_eat_set_theme_preference', 'eat_set_theme_preference' );
+function eat_set_theme_preference() {
+    check_ajax_referer( 'eat_set_theme_preference', 'nonce' );
+
+    if ( ! current_user_can( 'read' ) ) {
+        wp_send_json_error( [ 'message' => __( 'You are not allowed to change this preference.', 'editorial' ) ], 403 );
+    }
+
+    $preference = sanitize_key( wp_unslash( $_POST['preference'] ?? '' ) );
+    if ( ! in_array( $preference, [ 'light', 'dark' ], true ) ) {
+        wp_send_json_error( [ 'message' => __( 'Invalid theme preference.', 'editorial' ) ], 400 );
+    }
+
+    update_user_meta( get_current_user_id(), eat_get_theme_preference_meta_key(), $preference );
+    wp_send_json_success( [ 'preference' => $preference ] );
 }
 
 add_action( 'admin_head', 'eat_force_menu_expanded' );
@@ -120,13 +222,24 @@ function eat_render_dashboard_intro() {
     $user = wp_get_current_user();
     $name = $user->display_name ?: __( 'there', 'editorial' );
     $today = wp_date( 'F j, Y' );
+    $theme = eat_get_theme_preference( $user->ID ?: 0 );
+    $next_theme = $theme === 'dark' ? 'light' : 'dark';
     ?>
     <div class="eat-dashboard-intro">
         <div class="eat-dashboard-intro-copy">
             <p class="eat-dashboard-intro-eyebrow">Hello <?php echo esc_html( $name ); ?>,</p>
             <p class="eat-dashboard-intro-eyebrow">This is your updated publishing workspace for today.</p>
         </div>
-        <div class="eat-dashboard-intro-date"><?php echo esc_html( $today ); ?></div>
+        <div class="eat-dashboard-intro-meta">
+            <div class="eat-dashboard-intro-date"><?php echo esc_html( $today ); ?></div>
+            <button type="button"
+                    class="button eat-dashboard-theme-toggle"
+                    data-current-theme="<?php echo esc_attr( $theme ); ?>"
+                    data-next-theme="<?php echo esc_attr( $next_theme ); ?>"
+                    aria-pressed="<?php echo esc_attr( $theme === 'dark' ? 'true' : 'false' ); ?>">
+                <span class="eat-dashboard-theme-toggle-label"><?php echo esc_html( $next_theme === 'dark' ? __( 'Dark mode', 'editorial' ) : __( 'Light mode', 'editorial' ) ); ?></span>
+            </button>
+        </div>
     </div>
     <?php
 }
