@@ -181,6 +181,10 @@ function eat_setup_dashboard() {
         wp_add_dashboard_widget( 'ew_media_quick_start', '✦ Media Library', 'eat_render_media_quick_start_widget', null, null, 'normal', 'core' );
     }
 
+    if ( current_user_can( 'edit_posts' ) ) {
+        wp_add_dashboard_widget( 'ew_open_change_requests', '✦ Open Change Requests', 'eat_render_open_change_requests_widget', null, null, 'normal', 'core' );
+    }
+
     wp_add_dashboard_widget( 'ew_editorial_queue', '✦ Editorial Queue', 'eat_render_dashboard_widget' );
     wp_add_dashboard_widget( 'ew_editorial_notifications', '✦ Editorial Notifications', 'eat_render_notifications_widget', null, null, 'side', 'high' );
 }
@@ -303,6 +307,65 @@ function eat_render_media_quick_start_widget() {
             <a class="button button-primary eat-media-quick-start-button" href="<?php echo esc_url( $media_upload_url ); ?>">Upload Media</a>
             <a class="button eat-media-quick-start-secondary" href="<?php echo esc_url( $media_library_url ); ?>">Open Library</a>
         </div>
+    </div>
+    <?php
+}
+
+function eat_get_change_request_age_in_days( $post ) {
+    $requested_timestamp = 0;
+
+    if ( function_exists( 'ew_get_active_change_request_comment' ) ) {
+        $active_request = ew_get_active_change_request_comment( $post->ID );
+        if ( $active_request ) {
+            $requested_timestamp = mysql2date( 'U', $active_request->comment_date_gmt ?: $active_request->comment_date, false );
+        }
+    }
+
+    if ( ! $requested_timestamp ) {
+        $requested_timestamp = get_post_modified_time( 'U', true, $post );
+    }
+
+    $now = current_time( 'timestamp', true );
+    $age = max( 1, (int) ceil( max( 0, $now - $requested_timestamp ) / DAY_IN_SECONDS ) );
+
+    return $age;
+}
+
+function eat_render_open_change_requests_widget() {
+    $query_args = [
+        'post_type'      => 'post',
+        'post_status'    => 'changes_requested',
+        'posts_per_page' => 6,
+        'orderby'        => 'modified',
+        'order'          => 'DESC',
+    ];
+
+    if ( eat_user_is_writer() ) {
+        $query_args['author'] = get_current_user_id();
+    }
+
+    $changes_requested = get_posts( $query_args );
+    $changes_requested_url = admin_url( 'edit.php?post_status=changes_requested&post_type=post' );
+    ?>
+    <div class="eat-open-requests-panel">
+        <?php if ( empty( $changes_requested ) ) : ?>
+            <p class="eat-open-requests-empty">No open change requests right now.</p>
+        <?php else : ?>
+            <div class="eat-open-requests-summary">
+                <strong><?php echo esc_html( (string) count( $changes_requested ) ); ?></strong>
+                <span><?php echo esc_html( count( $changes_requested ) === 1 ? 'open request needs attention' : 'open requests need attention' ); ?></span>
+            </div>
+            <ul class="eat-open-requests-list">
+                <?php foreach ( $changes_requested as $post ) : ?>
+                    <?php $days_open = eat_get_change_request_age_in_days( $post ); ?>
+                    <li class="eat-open-requests-item">
+                        <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $post->ID . '&action=edit' ) ); ?>"><?php echo esc_html( $post->post_title ?: '(Untitled)' ); ?></a>
+                        <span><?php echo esc_html( sprintf( _n( '%d day open', '%d days open', $days_open, 'editorial' ), $days_open ) ); ?></span>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+            <a class="eat-open-requests-link" href="<?php echo esc_url( $changes_requested_url ); ?>">View all open requests</a>
+        <?php endif; ?>
     </div>
     <?php
 }

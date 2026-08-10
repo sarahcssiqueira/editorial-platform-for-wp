@@ -1165,6 +1165,90 @@ body.block-editor-page .edit-post-layout__metaboxes .ew-change-batch {
     color: var(--e-text-0) !important;
 }
 
+/* ─── OPEN CHANGE REQUESTS ────────────────────────────────────────────────── */
+.eat-open-requests-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.eat-open-requests-summary {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: var(--e-radius);
+    background: var(--e-red-dim);
+    border: 1px solid rgba(220,38,38,.12);
+}
+
+.eat-open-requests-summary strong {
+    color: var(--e-red);
+    font-size: 22px;
+    line-height: 1;
+}
+
+.eat-open-requests-summary span,
+.eat-open-requests-empty {
+    margin: 0;
+    color: var(--e-text-2);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.eat-open-requests-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.eat-open-requests-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--e-border-0);
+}
+
+.eat-open-requests-item:last-child {
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.eat-open-requests-item a {
+    color: var(--e-text-0);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.eat-open-requests-item a:hover {
+    color: var(--e-red);
+}
+
+.eat-open-requests-item span {
+    flex-shrink: 0;
+    color: var(--e-red);
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.eat-open-requests-link {
+    color: var(--e-text-1);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.eat-open-requests-link:hover {
+    color: var(--e-red);
+}
+
 /* ─── BUTTONS ───────────────────────────────────────────────────────────────── */
 .wp-core-ui .button {
     background: #fff !important;
