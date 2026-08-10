@@ -145,12 +145,40 @@ body.wp-admin {
 .folded #adminmenuback,
 .folded #adminmenuwrap,
 .folded #adminmenu {
-    width: 36px !important;
+    width: var(--e-sidebar-w) !important;
 }
 
 .folded #wpcontent,
 .folded #wpfooter {
-    margin-left: 36px !important;
+    margin-left: var(--e-sidebar-w) !important;
+}
+
+/* Keep collapsed menu compact and prevent overlap into content */
+.folded #adminmenu li.menu-top > a {
+    width: auto !important;
+    min-height: 0 !important;
+    justify-content: flex-start !important;
+    padding: 5px 8px !important;
+    gap: 7px !important;
+}
+
+.folded #adminmenu .wp-menu-name,
+.folded #adminmenu .update-plugins {
+    display: block !important;
+}
+
+.folded #adminmenu .wp-submenu {
+    left: auto !important;
+    min-width: 0 !important;
+}
+
+.folded #adminmenu .wp-menu-image {
+    margin: 0 !important;
+}
+
+.folded #adminmenu li.wp-has-current-submenu .wp-submenu,
+.folded #adminmenu li.current .wp-submenu {
+    top: auto !important;
 }
 
 @media screen and (max-width: 782px) {
@@ -912,11 +940,133 @@ body.block-editor-page .edit-post-layout__metaboxes .ew-change-batch {
     flex-shrink: 0;
 }
 
+/* Prevent queue row breakage in narrow dashboard columns */
+@media screen and (max-width: 1280px) {
+    .eat-queue-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+
+    .eat-queue-item a {
+        max-width: 100%;
+        white-space: normal;
+    }
+
+    .eat-queue-meta {
+        white-space: normal;
+    }
+}
+
 .eat-queue-empty {
     font-size: 12px;
     color: var(--e-green);
     padding: 8px 0;
     font-weight: 500;
+}
+
+/* ─── DASHBOARD NOTIFICATIONS ──────────────────────────────────────────────── */
+.eat-notifications-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.eat-notifications-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.eat-note-pill {
+    background: #fff;
+    border: 1px solid var(--e-border-0);
+    border-radius: var(--e-radius);
+    padding: 8px;
+    text-decoration: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    transition: border-color var(--e-trans), background var(--e-trans);
+}
+
+.eat-note-pill strong {
+    color: var(--e-text-0);
+    font-size: 16px;
+    line-height: 1;
+}
+
+.eat-note-pill span {
+    color: var(--e-text-3);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.eat-note-pill:hover {
+    background: var(--e-surface-2);
+    border-color: var(--e-border-1);
+}
+
+.eat-note-pill.is-pending { border-left: 3px solid var(--e-amber); }
+.eat-note-pill.is-changes { border-left: 3px solid #b45309; }
+.eat-note-pill.is-approved { border-left: 3px solid var(--e-green); }
+.eat-note-pill.is-scheduled { border-left: 3px solid var(--e-blue); }
+
+.eat-notifications-block {
+    background: #fff;
+    border: 1px solid var(--e-border-0);
+    border-radius: var(--e-radius);
+    padding: 10px;
+}
+
+.eat-notifications-title {
+    color: var(--e-text-3);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.eat-notifications-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.eat-notifications-list li {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--e-border-0);
+}
+
+.eat-notifications-list li:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.eat-notifications-list a {
+    color: var(--e-text-0);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.eat-notifications-list a:hover {
+    color: var(--e-accent);
+}
+
+.eat-notifications-list span,
+.eat-notifications-empty {
+    color: var(--e-text-3);
+    font-size: 11px;
+    margin: 0;
 }
 
 /* ─── BUTTONS ───────────────────────────────────────────────────────────────── */

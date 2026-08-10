@@ -64,7 +64,7 @@ function eat_cleanup_menu() {
     $user = wp_get_current_user();
 
     if ( eat_user_is_writer( $user ) ) {
-        foreach ( [ 'index.php', 'edit-comments.php', 'tools.php', 'options-general.php', 'themes.php', 'plugins.php', 'users.php' ] as $page ) {
+        foreach ( [ 'edit-comments.php', 'tools.php', 'options-general.php', 'themes.php', 'plugins.php', 'users.php' ] as $page ) {
             remove_menu_page( $page );
         }
     }
@@ -88,6 +88,28 @@ function eat_body_class( $classes ) {
     elseif ( eat_user_is_editor( $user ) )    $classes .= ' eat-editor';
     elseif ( eat_user_is_admin( $user ) )     $classes .= ' eat-admin';
     return $classes;
+}
+
+add_action( 'admin_head', 'eat_force_menu_expanded' );
+function eat_force_menu_expanded() {
+    ?>
+    <style>
+        #collapse-menu,
+        #collapse-button {
+            display: none !important;
+        }
+    </style>
+    <script>
+        (function() {
+            var body = document.body;
+            if (!body) {
+                return;
+            }
+
+            body.classList.remove('folded', 'auto-fold');
+        })();
+    </script>
+    <?php
 }
 
 
@@ -151,6 +173,7 @@ function eat_setup_dashboard() {
         remove_meta_box( $widget, 'dashboard', 'side' );
     }
     wp_add_dashboard_widget( 'ew_editorial_queue', '✦ Editorial Queue', 'eat_render_dashboard_widget' );
+    wp_add_dashboard_widget( 'ew_editorial_notifications', '✦ Editorial Notifications', 'eat_render_notifications_widget', null, null, 'side', 'high' );
 }
 
 function eat_render_dashboard_widget() {
@@ -194,6 +217,59 @@ function eat_render_dashboard_widget() {
             <?php endforeach; ?>
         </div>
         <?php endif; ?>
+    </div>
+    <?php
+}
+
+function eat_render_notifications_widget() {
+    $counts = wp_count_posts( 'post' );
+    $pending_count = isset( $counts->pending ) ? (int) $counts->pending : 0;
+    $changes_requested_count = isset( $counts->changes_requested ) ? (int) $counts->changes_requested : 0;
+    $approved_count = isset( $counts->approved ) ? (int) $counts->approved : 0;
+    $future_count = isset( $counts->future ) ? (int) $counts->future : 0;
+
+    $recent_updates = get_posts( [
+        'post_status' => [ 'draft', 'pending', 'changes_requested', 'approved', 'future', 'publish' ],
+        'numberposts' => 4,
+        'orderby' => 'modified',
+        'order' => 'DESC',
+    ] );
+    ?>
+    <div class="eat-notifications-panel">
+        <div class="eat-notifications-summary">
+            <a class="eat-note-pill is-pending" href="<?php echo esc_url( admin_url( 'edit.php?post_status=pending&post_type=post' ) ); ?>">
+                <strong><?php echo esc_html( (string) $pending_count ); ?></strong>
+                <span>Pending</span>
+            </a>
+            <a class="eat-note-pill is-changes" href="<?php echo esc_url( admin_url( 'edit.php?post_status=changes_requested&post_type=post' ) ); ?>">
+                <strong><?php echo esc_html( (string) $changes_requested_count ); ?></strong>
+                <span>Changes</span>
+            </a>
+            <a class="eat-note-pill is-approved" href="<?php echo esc_url( admin_url( 'edit.php?post_status=approved&post_type=post' ) ); ?>">
+                <strong><?php echo esc_html( (string) $approved_count ); ?></strong>
+                <span>Approved</span>
+            </a>
+            <a class="eat-note-pill is-scheduled" href="<?php echo esc_url( admin_url( 'edit.php?post_status=future&post_type=post' ) ); ?>">
+                <strong><?php echo esc_html( (string) $future_count ); ?></strong>
+                <span>Scheduled</span>
+            </a>
+        </div>
+
+        <div class="eat-notifications-block">
+            <div class="eat-notifications-title">Recent Updates</div>
+            <?php if ( empty( $recent_updates ) ) : ?>
+                <p class="eat-notifications-empty">No post activity yet.</p>
+            <?php else : ?>
+                <ul class="eat-notifications-list">
+                    <?php foreach ( $recent_updates as $post ) : ?>
+                        <li>
+                            <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $post->ID . '&action=edit' ) ); ?>"><?php echo esc_html( $post->post_title ?: '(Untitled)' ); ?></a>
+                            <span><?php echo esc_html( human_time_diff( strtotime( $post->post_modified ) ) ); ?> ago</span>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+        </div>
     </div>
     <?php
 }
