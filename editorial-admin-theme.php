@@ -177,6 +177,10 @@ function eat_setup_dashboard() {
         wp_add_dashboard_widget( 'ew_writer_quick_start', '✦ Start Writing', 'eat_render_writer_quick_start_widget', null, null, 'normal', 'high' );
     }
 
+    if ( current_user_can( 'upload_files' ) ) {
+        wp_add_dashboard_widget( 'ew_media_quick_start', '✦ Media Library', 'eat_render_media_quick_start_widget', null, null, 'normal', 'core' );
+    }
+
     wp_add_dashboard_widget( 'ew_editorial_queue', '✦ Editorial Queue', 'eat_render_dashboard_widget' );
     wp_add_dashboard_widget( 'ew_editorial_notifications', '✦ Editorial Notifications', 'eat_render_notifications_widget', null, null, 'side', 'high' );
 }
@@ -285,6 +289,20 @@ function eat_render_writer_quick_start_widget() {
     <div class="eat-writer-quick-start">
         <p class="eat-writer-quick-start-copy">Open a fresh draft and start writing right away.</p>
         <a class="button button-primary eat-writer-quick-start-button" href="<?php echo esc_url( $new_post_url ); ?>">Add New Post</a>
+    </div>
+    <?php
+}
+
+function eat_render_media_quick_start_widget() {
+    $media_upload_url  = admin_url( 'media-new.php' );
+    $media_library_url = admin_url( 'upload.php' );
+    ?>
+    <div class="eat-media-quick-start">
+        <p class="eat-media-quick-start-copy">Jump straight into uploads or browse the media library.</p>
+        <div class="eat-media-quick-start-actions">
+            <a class="button button-primary eat-media-quick-start-button" href="<?php echo esc_url( $media_upload_url ); ?>">Upload Media</a>
+            <a class="button eat-media-quick-start-secondary" href="<?php echo esc_url( $media_library_url ); ?>">Open Library</a>
+        </div>
     </div>
     <?php
 }

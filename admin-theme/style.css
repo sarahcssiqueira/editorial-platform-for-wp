@@ -1106,6 +1106,65 @@ body.block-editor-page .edit-post-layout__metaboxes .ew-change-batch {
     box-shadow: 0 0 0 3px var(--e-accent-ring) !important;
 }
 
+/* ─── MEDIA QUICK START ───────────────────────────────────────────────────── */
+.eat-media-quick-start {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.eat-media-quick-start-copy {
+    margin: 0;
+    color: var(--e-text-2);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.eat-media-quick-start-actions {
+    display: grid;
+    gap: 8px;
+}
+
+.eat-media-quick-start-button.button.button-primary,
+.eat-media-quick-start-secondary.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 40px;
+    padding: 10px 14px !important;
+}
+
+.eat-media-quick-start-button.button.button-primary {
+    background: var(--e-blue) !important;
+    border-color: var(--e-blue) !important;
+    color: #fff !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    box-shadow: 0 10px 24px rgba(37,99,235,.16) !important;
+}
+
+.eat-media-quick-start-button.button.button-primary:hover,
+.eat-media-quick-start-button.button.button-primary:focus {
+    background: #1d4ed8 !important;
+    border-color: #1d4ed8 !important;
+    color: #fff !important;
+    box-shadow: 0 0 0 3px rgba(37,99,235,.18) !important;
+}
+
+.eat-media-quick-start-secondary.button {
+    background: var(--e-surface-1) !important;
+    border-color: var(--e-border-1) !important;
+    color: var(--e-text-1) !important;
+}
+
+.eat-media-quick-start-secondary.button:hover,
+.eat-media-quick-start-secondary.button:focus {
+    background: var(--e-surface-2) !important;
+    border-color: var(--e-border-2) !important;
+    color: var(--e-text-0) !important;
+}
+
 /* ─── BUTTONS ───────────────────────────────────────────────────────────────── */
 .wp-core-ui .button {
     background: #fff !important;
