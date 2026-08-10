@@ -316,6 +316,55 @@ body.wp-admin {
     color: var(--e-text-0) !important;
 }
 
+/* ─── DASHBOARD INTRO ─────────────────────────────────────────────────────── */
+.index-php .notice.eat-dashboard-intro,
+.index-php .eat-dashboard-intro {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 0 0 20px;
+    padding: 18px 20px;
+    background: linear-gradient(135deg, #ffffff 0%, #f3f3f1 100%);
+    border: 1px solid var(--e-border-0);
+    border-radius: var(--e-radius-lg);
+    box-shadow: 0 12px 30px rgba(0,0,0,.04);
+}
+
+.eat-dashboard-intro-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.eat-dashboard-intro-eyebrow {
+    margin: 0;
+    color: var(--e-text-1);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+}
+
+.eat-dashboard-intro-date {
+    flex-shrink: 0;
+    color: var(--e-text-2);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+@media screen and (max-width: 782px) {
+    .index-php .notice.eat-dashboard-intro,
+    .index-php .eat-dashboard-intro {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .eat-dashboard-intro-eyebrow { font-size: 12px; }
+}
+
 /* ─── FILTER LINKS ──────────────────────────────────────────────────────────── */
 .subsubsub {
     font-size: 12px !important;

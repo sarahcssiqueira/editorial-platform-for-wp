@@ -112,6 +112,25 @@ function eat_force_menu_expanded() {
     <?php
 }
 
+add_action( 'all_admin_notices', 'eat_render_dashboard_intro' );
+function eat_render_dashboard_intro() {
+    $screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+    if ( ! $screen || $screen->base !== 'dashboard' ) return;
+
+    $user = wp_get_current_user();
+    $name = $user->display_name ?: __( 'there', 'editorial' );
+    $today = wp_date( 'F j, Y' );
+    ?>
+    <div class="eat-dashboard-intro">
+        <div class="eat-dashboard-intro-copy">
+            <p class="eat-dashboard-intro-eyebrow">Hello <?php echo esc_html( $name ); ?>,</p>
+            <p class="eat-dashboard-intro-eyebrow">This is your updated publishing workspace for today.</p>
+        </div>
+        <div class="eat-dashboard-intro-date"><?php echo esc_html( $today ); ?></div>
+    </div>
+    <?php
+}
+
 
 // ════════════════════════════════════════════════════════════════════════════
 // 4. CUSTOM ADMIN BAR
