@@ -172,6 +172,11 @@ function eat_setup_dashboard() {
     foreach ( [ 'dashboard_quick_press', 'dashboard_primary' ] as $widget ) {
         remove_meta_box( $widget, 'dashboard', 'side' );
     }
+
+    if ( eat_user_is_writer() && current_user_can( 'edit_posts' ) ) {
+        wp_add_dashboard_widget( 'ew_writer_quick_start', '✦ Start Writing', 'eat_render_writer_quick_start_widget', null, null, 'normal', 'high' );
+    }
+
     wp_add_dashboard_widget( 'ew_editorial_queue', '✦ Editorial Queue', 'eat_render_dashboard_widget' );
     wp_add_dashboard_widget( 'ew_editorial_notifications', '✦ Editorial Notifications', 'eat_render_notifications_widget', null, null, 'side', 'high' );
 }
@@ -270,6 +275,16 @@ function eat_render_notifications_widget() {
                 </ul>
             <?php endif; ?>
         </div>
+    </div>
+    <?php
+}
+
+function eat_render_writer_quick_start_widget() {
+    $new_post_url = admin_url( 'post-new.php' );
+    ?>
+    <div class="eat-writer-quick-start">
+        <p class="eat-writer-quick-start-copy">Open a fresh draft and start writing right away.</p>
+        <a class="button button-primary eat-writer-quick-start-button" href="<?php echo esc_url( $new_post_url ); ?>">Add New Post</a>
     </div>
     <?php
 }
