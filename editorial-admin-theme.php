@@ -185,6 +185,10 @@ function eat_setup_dashboard() {
         wp_add_dashboard_widget( 'ew_open_change_requests', '✦ Open Change Requests', 'eat_render_open_change_requests_widget', null, null, 'normal', 'core' );
     }
 
+    if ( current_user_can( 'read' ) ) {
+        wp_add_dashboard_widget( 'ew_author_guide', '✦ Author Guide', 'eat_render_component_library_widget', null, null, 'normal', 'core' );
+    }
+
     wp_add_dashboard_widget( 'ew_editorial_queue', '✦ Editorial Queue', 'eat_render_dashboard_widget' );
     wp_add_dashboard_widget( 'ew_editorial_notifications', '✦ Editorial Notifications', 'eat_render_notifications_widget', null, null, 'side', 'high' );
 }
@@ -366,6 +370,41 @@ function eat_render_open_change_requests_widget() {
             </ul>
             <a class="eat-open-requests-link" href="<?php echo esc_url( $changes_requested_url ); ?>">View all open requests</a>
         <?php endif; ?>
+    </div>
+    <?php
+}
+
+function eat_render_component_library_widget() {
+    $resources = [
+        [
+            'title'       => 'Gutenberg Blocks Guide',
+            'description' => 'Placeholder for block examples, implementation notes, and editor usage guidance.',
+            'url'         => home_url( '/docs/gutenberg-blocks/' ),
+        ],
+        [
+            'title'       => 'Page Templates',
+            'description' => 'Placeholder for approved page templates, layout guidance, and when to use each pattern.',
+            'url'         => home_url( '/docs/page-templates/' ),
+        ],
+        [
+            'title'       => 'Storybook',
+            'description' => 'Placeholder for the shared UI component catalog and usage patterns.',
+            'url'         => home_url( '/docs/storybook/' ),
+        ],
+    ];
+    ?>
+    <div class="eat-component-library">
+        <p class="eat-component-library-copy">Quick links to the author guide, Gutenberg usage notes, and component library documentation. Placeholder pages for now.</p>
+        <ul class="eat-component-library-list">
+            <?php foreach ( $resources as $resource ) : ?>
+                <li class="eat-component-library-item">
+                    <a class="eat-component-library-link" href="<?php echo esc_url( $resource['url'] ); ?>">
+                        <strong><?php echo esc_html( $resource['title'] ); ?></strong>
+                        <span><?php echo esc_html( $resource['description'] ); ?></span>
+                    </a>
+                </li>
+            <?php endforeach; ?>
+        </ul>
     </div>
     <?php
 }

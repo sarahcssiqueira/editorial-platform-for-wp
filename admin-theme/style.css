@@ -1249,6 +1249,64 @@ body.block-editor-page .edit-post-layout__metaboxes .ew-change-batch {
     color: var(--e-red);
 }
 
+/* ─── COMPONENT LIBRARY ───────────────────────────────────────────────────── */
+.eat-component-library {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.eat-component-library-copy {
+    margin: 0;
+    color: var(--e-text-2);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.eat-component-library-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.eat-component-library-item {
+    margin: 0;
+}
+
+.eat-component-library-link {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    background: #fff;
+    border: 1px solid var(--e-border-0);
+    border-radius: var(--e-radius);
+    text-decoration: none;
+    transition: border-color var(--e-trans), background var(--e-trans), transform var(--e-trans);
+}
+
+.eat-component-library-link strong {
+    color: var(--e-text-0);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.eat-component-library-link span {
+    color: var(--e-text-2);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.eat-component-library-link:hover,
+.eat-component-library-link:focus {
+    background: var(--e-surface-2);
+    border-color: var(--e-border-1);
+    transform: translateY(-1px);
+}
+
 /* ─── BUTTONS ───────────────────────────────────────────────────────────────── */
 .wp-core-ui .button {
     background: #fff !important;
