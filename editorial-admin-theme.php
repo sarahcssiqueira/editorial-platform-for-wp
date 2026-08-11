@@ -11,80 +11,180 @@
 
 defined( 'ABSPATH' ) || exit;
 
-function eat_get_theme_preference_meta_key() {
-    return 'eat_theme_preference';
-}
+/**
+ * Provides an editorial-focused admin experience.
+ */
+final class Editorial_Admin_Theme {
 
-function eat_get_theme_preference( $user_id = 0 ) {
-    $user_id = $user_id ?: get_current_user_id();
-    $preference = get_user_meta( $user_id, eat_get_theme_preference_meta_key(), true );
+	/**
+	 * Plugin version for style/script cache busting.
+	 *
+	 * @var string
+	 */
+	private const VERSION = '1.0.0';
 
-    return $preference === 'dark' ? 'dark' : 'light';
-}
+	/**
+	 * User meta key used to store theme preference.
+	 *
+	 * @var string
+	 */
+	private const THEME_PREFERENCE_META_KEY = 'eat_theme_preference';
 
-function eat_get_writer_role_slugs() {
-    return [ 'author' ];
-}
+	/**
+	 * Bootstraps the plugin.
+	 *
+	 * @return void
+	 */
+	public static function init() {
+		$plugin = new self();
+		$plugin->register_hooks();
+	}
 
-function eat_get_editor_role_slugs() {
-    return [ 'editor' ];
-}
+	/**
+	 * Registers all WordPress hooks for the plugin.
+	 *
+	 * @return void
+	 */
+	private function register_hooks() {
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_styles' ) );
+		add_action( 'admin_menu', array( $this, 'cleanup_menu' ), 999 );
+		add_filter( 'admin_body_class', array( $this, 'body_class' ) );
+		add_action( 'wp_ajax_eat_set_theme_preference', array( $this, 'set_theme_preference' ) );
+		add_action( 'admin_head', array( $this, 'force_menu_expanded' ) );
+		add_action( 'all_admin_notices', array( $this, 'render_dashboard_intro' ) );
+		add_action( 'admin_bar_menu', array( $this, 'admin_bar' ), 999 );
+		add_action( 'login_enqueue_scripts', array( $this, 'login_styles' ) );
+		add_action( 'wp_dashboard_setup', array( $this, 'setup_dashboard' ) );
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_split_view' ) );
+	}
 
-function eat_user_has_any_role( $user, $roles ) {
-    $user_roles = (array) ( $user->roles ?? [] );
-    return (bool) array_intersect( $user_roles, $roles );
-}
+	/**
+	 * Gets the current user's UI theme preference.
+	 *
+	 * @param int $user_id Optional user ID.
+	 *
+	 * @return string
+	 */
+	private function get_theme_preference( $user_id = 0 ) {
+		$user_id    = $user_id ?: get_current_user_id();
+		$preference = get_user_meta( $user_id, self::THEME_PREFERENCE_META_KEY, true );
 
-function eat_user_is_writer( $user = null ) {
-    $user = $user ?: wp_get_current_user();
-    return eat_user_has_any_role( $user, eat_get_writer_role_slugs() );
-}
+		return 'dark' === $preference ? 'dark' : 'light';
+	}
 
-function eat_user_is_editor( $user = null ) {
-    $user = $user ?: wp_get_current_user();
-    return eat_user_has_any_role( $user, eat_get_editor_role_slugs() );
-}
+	/**
+	 * Returns role slugs treated as writers.
+	 *
+	 * @return array<int, string>
+	 */
+	private function get_writer_role_slugs() {
+		return array( 'author' );
+	}
 
-function eat_user_is_admin( $user = null ) {
-    $user = $user ?: wp_get_current_user();
-    return eat_user_has_any_role( $user, [ 'administrator' ] );
-}
+	/**
+	 * Returns role slugs treated as editors.
+	 *
+	 * @return array<int, string>
+	 */
+	private function get_editor_role_slugs() {
+		return array( 'editor' );
+	}
 
+	/**
+	 * Checks whether a user has any role from a provided list.
+	 *
+	 * @param WP_User $user  User object.
+	 * @param array   $roles Role slugs to compare.
+	 *
+	 * @return bool
+	 */
+	private function user_has_any_role( $user, $roles ) {
+		$user_roles = (array) ( $user->roles ?? array() );
 
-// ════════════════════════════════════════════════════════════════════════════
-// 1. ENQUEUE ADMIN STYLES
-// ════════════════════════════════════════════════════════════════════════════
+		return (bool) array_intersect( $user_roles, $roles );
+	}
 
-add_action( 'admin_enqueue_scripts', 'eat_enqueue_styles' );
-function eat_enqueue_styles( $hook = '' ) {
-    wp_enqueue_style(
-        'editorial-admin-theme',
-        plugins_url( 'admin-theme/style.css', __FILE__ ),
-        [ 'wp-admin' ],
-        '1.0.0'
-    );
+	/**
+	 * Checks whether the current user is a writer.
+	 *
+	 * @param WP_User|null $user Optional user object.
+	 *
+	 * @return bool
+	 */
+	private function user_is_writer( $user = null ) {
+		$user = $user ?: wp_get_current_user();
 
-    if ( $hook !== 'index.php' ) return;
+		return $this->user_has_any_role( $user, $this->get_writer_role_slugs() );
+	}
 
-    wp_enqueue_script( 'jquery' );
+	/**
+	 * Checks whether the current user is an editor.
+	 *
+	 * @param WP_User|null $user Optional user object.
+	 *
+	 * @return bool
+	 */
+	private function user_is_editor( $user = null ) {
+		$user = $user ?: wp_get_current_user();
 
-    $theme = eat_get_theme_preference();
-    $nonce = wp_create_nonce( 'eat_set_theme_preference' );
+		return $this->user_has_any_role( $user, $this->get_editor_role_slugs() );
+	}
 
-    wp_add_inline_script(
-        'jquery',
-        'window.eatDashboardTheme = ' . wp_json_encode( [
-            'nonce'   => $nonce,
-            'current' => $theme,
-            'labels'  => [
-                'light' => __( 'Light mode', 'editorial' ),
-                'dark'  => __( 'Dark mode', 'editorial' ),
-            ],
-        ] ) . ';',
-        'before'
-    );
+	/**
+	 * Checks whether the current user is an administrator.
+	 *
+	 * @param WP_User|null $user Optional user object.
+	 *
+	 * @return bool
+	 */
+	private function user_is_admin( $user = null ) {
+		$user = $user ?: wp_get_current_user();
 
-    wp_add_inline_script( 'jquery', <<<'JS'
+		return $this->user_has_any_role( $user, array( 'administrator' ) );
+	}
+
+	/**
+	 * Enqueues core admin theme assets and dashboard theme toggle behavior.
+	 *
+	 * @param string $hook Current admin screen hook suffix.
+	 *
+	 * @return void
+	 */
+	public function enqueue_styles( $hook = '' ) {
+		wp_enqueue_style(
+			'editorial-admin-theme',
+			plugins_url( 'admin-theme/style.css', __FILE__ ),
+			array( 'wp-admin' ),
+			self::VERSION
+		);
+
+		if ( 'index.php' !== $hook ) {
+			return;
+		}
+
+		wp_enqueue_script( 'jquery' );
+
+		$theme = $this->get_theme_preference();
+		$nonce = wp_create_nonce( 'eat_set_theme_preference' );
+
+		wp_add_inline_script(
+			'jquery',
+			'window.eatDashboardTheme = ' . wp_json_encode(
+				array(
+					'nonce'   => $nonce,
+					'current' => $theme,
+					'labels'  => array(
+						'light' => __( 'Light mode', 'editorial' ),
+						'dark'  => __( 'Dark mode', 'editorial' ),
+					),
+				)
+			) . ';',
+			'before'
+		);
+
+		wp_add_inline_script(
+			'jquery',
+			<<<'JS'
 jQuery(function($){
     if ( typeof window.eatDashboardTheme === 'undefined' ) {
         return;
@@ -135,428 +235,514 @@ jQuery(function($){
     });
 });
 JS
-    );
-}
+		);
+	}
 
+	/**
+	 * Removes non-essential admin menu pages based on role.
+	 *
+	 * @return void
+	 */
+	public function cleanup_menu() {
+		$user = wp_get_current_user();
 
-// ════════════════════════════════════════════════════════════════════════════
-// 2. ROLE-AWARE MENU CLEANUP
-// ════════════════════════════════════════════════════════════════════════════
+		if ( $this->user_is_writer( $user ) ) {
+			foreach ( array( 'edit-comments.php', 'tools.php', 'options-general.php', 'themes.php', 'plugins.php', 'users.php' ) as $page ) {
+				remove_menu_page( $page );
+			}
+		}
 
-add_action( 'admin_menu', 'eat_cleanup_menu', 999 );
-function eat_cleanup_menu() {
-    $user = wp_get_current_user();
+		if ( $this->user_is_editor( $user ) ) {
+			foreach ( array( 'tools.php', 'options-general.php', 'themes.php', 'plugins.php' ) as $page ) {
+				remove_menu_page( $page );
+			}
+		}
+	}
 
-    if ( eat_user_is_writer( $user ) ) {
-        foreach ( [ 'edit-comments.php', 'tools.php', 'options-general.php', 'themes.php', 'plugins.php', 'users.php' ] as $page ) {
-            remove_menu_page( $page );
-        }
-    }
+	/**
+	 * Adds role and theme classes to admin body.
+	 *
+	 * @param string $classes Existing classes.
+	 *
+	 * @return string
+	 */
+	public function body_class( $classes ) {
+		$user = wp_get_current_user();
 
-    if ( eat_user_is_editor( $user ) ) {
-        foreach ( [ 'tools.php', 'options-general.php', 'themes.php', 'plugins.php' ] as $page ) {
-            remove_menu_page( $page );
-        }
-    }
-}
+		if ( $this->user_is_writer( $user ) ) {
+			$classes .= ' eat-writer';
+		} elseif ( $this->user_is_editor( $user ) ) {
+			$classes .= ' eat-editor';
+		} elseif ( $this->user_is_admin( $user ) ) {
+			$classes .= ' eat-admin';
+		}
 
+		$classes .= ' eat-theme-' . $this->get_theme_preference( $user->ID ?: 0 );
 
-// ════════════════════════════════════════════════════════════════════════════
-// 3. ROLE-AWARE BODY CLASS
-// ════════════════════════════════════════════════════════════════════════════
+		return $classes;
+	}
 
-add_filter( 'admin_body_class', 'eat_body_class' );
-function eat_body_class( $classes ) {
-    $user = wp_get_current_user();
-    if ( eat_user_is_writer( $user ) )        $classes .= ' eat-writer';
-    elseif ( eat_user_is_editor( $user ) )    $classes .= ' eat-editor';
-    elseif ( eat_user_is_admin( $user ) )     $classes .= ' eat-admin';
-    $classes .= ' eat-theme-' . eat_get_theme_preference( $user->ID ?: 0 );
-    return $classes;
-}
+	/**
+	 * Persists dashboard theme preference for the current user.
+	 *
+	 * @return void
+	 */
+	public function set_theme_preference() {
+		check_ajax_referer( 'eat_set_theme_preference', 'nonce' );
 
-add_action( 'wp_ajax_eat_set_theme_preference', 'eat_set_theme_preference' );
-function eat_set_theme_preference() {
-    check_ajax_referer( 'eat_set_theme_preference', 'nonce' );
+		if ( ! current_user_can( 'read' ) ) {
+			wp_send_json_error( array( 'message' => __( 'You are not allowed to change this preference.', 'editorial' ) ), 403 );
+		}
 
-    if ( ! current_user_can( 'read' ) ) {
-        wp_send_json_error( [ 'message' => __( 'You are not allowed to change this preference.', 'editorial' ) ], 403 );
-    }
+		$preference = sanitize_key( wp_unslash( $_POST['preference'] ?? '' ) );
+		if ( ! in_array( $preference, array( 'light', 'dark' ), true ) ) {
+			wp_send_json_error( array( 'message' => __( 'Invalid theme preference.', 'editorial' ) ), 400 );
+		}
 
-    $preference = sanitize_key( wp_unslash( $_POST['preference'] ?? '' ) );
-    if ( ! in_array( $preference, [ 'light', 'dark' ], true ) ) {
-        wp_send_json_error( [ 'message' => __( 'Invalid theme preference.', 'editorial' ) ], 400 );
-    }
+		update_user_meta( get_current_user_id(), self::THEME_PREFERENCE_META_KEY, $preference );
+		wp_send_json_success( array( 'preference' => $preference ) );
+	}
 
-    update_user_meta( get_current_user_id(), eat_get_theme_preference_meta_key(), $preference );
-    wp_send_json_success( [ 'preference' => $preference ] );
-}
+	/**
+	 * Forces the left admin menu to remain expanded.
+	 *
+	 * @return void
+	 */
+	public function force_menu_expanded() {
+		?>
+		<style>
+			#collapse-menu,
+			#collapse-button {
+				display: none !important;
+			}
+		</style>
+		<script>
+			(function() {
+				var body = document.body;
+				if (!body) {
+					return;
+				}
 
-add_action( 'admin_head', 'eat_force_menu_expanded' );
-function eat_force_menu_expanded() {
-    ?>
-    <style>
-        #collapse-menu,
-        #collapse-button {
-            display: none !important;
-        }
-    </style>
-    <script>
-        (function() {
-            var body = document.body;
-            if (!body) {
-                return;
-            }
+				body.classList.remove('folded', 'auto-fold');
+			})();
+		</script>
+		<?php
+	}
 
-            body.classList.remove('folded', 'auto-fold');
-        })();
-    </script>
-    <?php
-}
+	/**
+	 * Renders a custom dashboard greeting and quick theme toggle.
+	 *
+	 * @return void
+	 */
+	public function render_dashboard_intro() {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen || 'dashboard' !== $screen->base ) {
+			return;
+		}
 
-add_action( 'all_admin_notices', 'eat_render_dashboard_intro' );
-function eat_render_dashboard_intro() {
-    $screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
-    if ( ! $screen || $screen->base !== 'dashboard' ) return;
+		$user       = wp_get_current_user();
+		$name       = $user->display_name ?: __( 'there', 'editorial' );
+		$today      = wp_date( 'F j, Y' );
+		$theme      = $this->get_theme_preference( $user->ID ?: 0 );
+		$next_theme = 'dark' === $theme ? 'light' : 'dark';
+		?>
+		<div class="eat-dashboard-intro">
+			<div class="eat-dashboard-intro-copy">
+				<p class="eat-dashboard-intro-eyebrow">Hello <?php echo esc_html( $name ); ?>,</p>
+				<p class="eat-dashboard-intro-eyebrow">This is your updated publishing workspace for today.</p>
+			</div>
+			<div class="eat-dashboard-intro-meta">
+				<div class="eat-dashboard-intro-date"><?php echo esc_html( $today ); ?></div>
+				<button type="button"
+						class="button eat-dashboard-theme-toggle"
+						data-current-theme="<?php echo esc_attr( $theme ); ?>"
+						data-next-theme="<?php echo esc_attr( $next_theme ); ?>"
+						aria-pressed="<?php echo esc_attr( 'dark' === $theme ? 'true' : 'false' ); ?>">
+					<span class="eat-dashboard-theme-toggle-label"><?php echo esc_html( 'dark' === $next_theme ? __( 'Dark mode', 'editorial' ) : __( 'Light mode', 'editorial' ) ); ?></span>
+				</button>
+			</div>
+		</div>
+		<?php
+	}
 
-    $user = wp_get_current_user();
-    $name = $user->display_name ?: __( 'there', 'editorial' );
-    $today = wp_date( 'F j, Y' );
-    $theme = eat_get_theme_preference( $user->ID ?: 0 );
-    $next_theme = $theme === 'dark' ? 'light' : 'dark';
-    ?>
-    <div class="eat-dashboard-intro">
-        <div class="eat-dashboard-intro-copy">
-            <p class="eat-dashboard-intro-eyebrow">Hello <?php echo esc_html( $name ); ?>,</p>
-            <p class="eat-dashboard-intro-eyebrow">This is your updated publishing workspace for today.</p>
-        </div>
-        <div class="eat-dashboard-intro-meta">
-            <div class="eat-dashboard-intro-date"><?php echo esc_html( $today ); ?></div>
-            <button type="button"
-                    class="button eat-dashboard-theme-toggle"
-                    data-current-theme="<?php echo esc_attr( $theme ); ?>"
-                    data-next-theme="<?php echo esc_attr( $next_theme ); ?>"
-                    aria-pressed="<?php echo esc_attr( $theme === 'dark' ? 'true' : 'false' ); ?>">
-                <span class="eat-dashboard-theme-toggle-label"><?php echo esc_html( $next_theme === 'dark' ? __( 'Dark mode', 'editorial' ) : __( 'Light mode', 'editorial' ) ); ?></span>
-            </button>
-        </div>
-    </div>
-    <?php
-}
+	/**
+	 * Customizes admin bar nodes by role and injects review queue badge.
+	 *
+	 * @param WP_Admin_Bar $wp_admin_bar Admin bar instance.
+	 *
+	 * @return void
+	 */
+	public function admin_bar( $wp_admin_bar ) {
+		$user = wp_get_current_user();
 
+		if ( ! $this->user_is_admin( $user ) ) {
+			foreach ( array( 'wp-logo', 'customize', 'comments', 'new-content' ) as $node ) {
+				$wp_admin_bar->remove_node( $node );
+			}
+		}
 
-// ════════════════════════════════════════════════════════════════════════════
-// 4. CUSTOM ADMIN BAR
-// ════════════════════════════════════════════════════════════════════════════
+		if ( $this->user_is_editor( $user ) || $this->user_is_admin( $user ) ) {
+			$pending = get_posts(
+				array(
+					'post_status' => 'pending',
+					'numberposts' => -1,
+				)
+			);
+			$count   = count( $pending );
 
-add_action( 'admin_bar_menu', 'eat_admin_bar', 999 );
-function eat_admin_bar( $wp_admin_bar ) {
-    $user = wp_get_current_user();
+			if ( $count > 0 ) {
+				$wp_admin_bar->add_node(
+					array(
+						'id'    => 'ew-review-queue',
+						'title' => sprintf( '<span class="eat-review-badge">✦ %d to review</span>', $count ),
+						'href'  => admin_url( 'edit.php?post_status=pending&post_type=post' ),
+					)
+				);
+			}
+		}
+	}
 
-    if ( ! eat_user_is_admin( $user ) ) {
-        foreach ( [ 'wp-logo', 'customize', 'comments', 'new-content' ] as $node ) {
-            $wp_admin_bar->remove_node( $node );
-        }
-    }
+	/**
+	 * Outputs custom login page styling.
+	 *
+	 * @return void
+	 */
+	public function login_styles() {
+		?>
+		<style>
+			body.login { background: #0f0f0f; }
+			#login h1 a { background-image:none; font-family:'Georgia',serif; font-size:22px; color:#f5f0e8; text-indent:0; width:auto; height:auto; display:block; text-align:center; letter-spacing:.15em; text-transform:uppercase; }
+			#login h1 a::before { content:'✦ Editorial'; }
+			.login form { background:#1a1a1a; border:1px solid #2a2a2a; box-shadow:none; }
+			.login label { color:#888; }
+			.login input[type=text], .login input[type=password] { background:#0f0f0f; border-color:#2a2a2a; color:#f5f0e8; }
+			.wp-core-ui .button-primary { background:#f5f0e8; border-color:#f5f0e8; color:#0f0f0f; }
+			.wp-core-ui .button-primary:hover { background:#fff; border-color:#fff; }
+		</style>
+		<?php
+	}
 
-    if ( eat_user_is_editor( $user ) || eat_user_is_admin( $user ) ) {
-        $pending = get_posts( [ 'post_status' => 'pending', 'numberposts' => -1 ] );
-        $n = count( $pending );
-        if ( $n > 0 ) {
-            $wp_admin_bar->add_node( [
-                'id'    => 'ew-review-queue',
-                'title' => sprintf( '<span class="eat-review-badge">✦ %d to review</span>', $n ),
-                'href'  => admin_url( 'edit.php?post_status=pending&post_type=post' ),
-            ] );
-        }
-    }
-}
+	/**
+	 * Configures dashboard widgets for editorial workflows.
+	 *
+	 * @return void
+	 */
+	public function setup_dashboard() {
+		foreach ( array( 'dashboard_activity', 'dashboard_right_now', 'dashboard_site_health' ) as $widget ) {
+			remove_meta_box( $widget, 'dashboard', 'normal' );
+		}
 
+		foreach ( array( 'dashboard_quick_press', 'dashboard_primary' ) as $widget ) {
+			remove_meta_box( $widget, 'dashboard', 'side' );
+		}
 
-// ════════════════════════════════════════════════════════════════════════════
-// 5. CUSTOM LOGIN PAGE
-// ════════════════════════════════════════════════════════════════════════════
+		if ( $this->user_is_writer() && current_user_can( 'edit_posts' ) ) {
+			wp_add_dashboard_widget( 'ew_writer_quick_start', '✦ Start Writing', array( $this, 'render_writer_quick_start_widget' ), null, null, 'normal', 'high' );
+		}
 
-add_action( 'login_enqueue_scripts', 'eat_login_styles' );
-function eat_login_styles() { ?>
-    <style>
-        body.login { background: #0f0f0f; }
-        #login h1 a { background-image:none; font-family:'Georgia',serif; font-size:22px; color:#f5f0e8; text-indent:0; width:auto; height:auto; display:block; text-align:center; letter-spacing:.15em; text-transform:uppercase; }
-        #login h1 a::before { content:'✦ Editorial'; }
-        .login form { background:#1a1a1a; border:1px solid #2a2a2a; box-shadow:none; }
-        .login label { color:#888; }
-        .login input[type=text], .login input[type=password] { background:#0f0f0f; border-color:#2a2a2a; color:#f5f0e8; }
-        .wp-core-ui .button-primary { background:#f5f0e8; border-color:#f5f0e8; color:#0f0f0f; }
-        .wp-core-ui .button-primary:hover { background:#fff; border-color:#fff; }
-    </style>
-<?php }
+		if ( current_user_can( 'upload_files' ) ) {
+			wp_add_dashboard_widget( 'ew_media_quick_start', '✦ Media Library', array( $this, 'render_media_quick_start_widget' ), null, null, 'normal', 'core' );
+		}
 
+		if ( current_user_can( 'edit_posts' ) ) {
+			wp_add_dashboard_widget( 'ew_open_change_requests', '✦ Open Change Requests', array( $this, 'render_open_change_requests_widget' ), null, null, 'normal', 'core' );
+		}
 
-// ════════════════════════════════════════════════════════════════════════════
-// 6. EDITORIAL DASHBOARD WIDGET
-// ════════════════════════════════════════════════════════════════════════════
+		if ( current_user_can( 'read' ) ) {
+			wp_add_dashboard_widget( 'ew_author_guide', '✦ Author Guide', array( $this, 'render_component_library_widget' ), null, null, 'normal', 'core' );
+		}
 
-add_action( 'wp_dashboard_setup', 'eat_setup_dashboard' );
-function eat_setup_dashboard() {
-    foreach ( [ 'dashboard_activity', 'dashboard_right_now', 'dashboard_site_health' ] as $widget ) {
-        remove_meta_box( $widget, 'dashboard', 'normal' );
-    }
-    foreach ( [ 'dashboard_quick_press', 'dashboard_primary' ] as $widget ) {
-        remove_meta_box( $widget, 'dashboard', 'side' );
-    }
+		wp_add_dashboard_widget( 'ew_editorial_queue', '✦ Editorial Queue', array( $this, 'render_dashboard_widget' ) );
+		wp_add_dashboard_widget( 'ew_editorial_notifications', '✦ Editorial Notifications', array( $this, 'render_notifications_widget' ), null, null, 'side', 'high' );
+	}
 
-    if ( eat_user_is_writer() && current_user_can( 'edit_posts' ) ) {
-        wp_add_dashboard_widget( 'ew_writer_quick_start', '✦ Start Writing', 'eat_render_writer_quick_start_widget', null, null, 'normal', 'high' );
-    }
+	/**
+	 * Renders the editorial queue dashboard widget.
+	 *
+	 * @return void
+	 */
+	public function render_dashboard_widget() {
+		$pending           = get_posts( array( 'post_status' => 'pending', 'numberposts' => 10, 'orderby' => 'modified', 'order' => 'DESC' ) );
+		$changes_requested = get_posts( array( 'post_status' => 'changes_requested', 'numberposts' => 10, 'orderby' => 'modified', 'order' => 'DESC' ) );
+		$approved          = get_posts( array( 'post_status' => 'approved', 'numberposts' => 10, 'orderby' => 'modified', 'order' => 'DESC' ) );
+		?>
+		<div class="eat-dashboard-queue">
+			<?php if ( ! empty( $pending ) ) : ?>
+			<div class="eat-queue-group">
+				<div class="eat-queue-label">Pending (<?php echo count( $pending ); ?>)</div>
+				<?php foreach ( $pending as $post ) : ?>
+				<div class="eat-queue-item">
+					<a href="<?php echo esc_url( admin_url( 'post.php?post=' . $post->ID . '&action=edit' ) ); ?>"><?php echo esc_html( $post->post_title ?: '(Untitled)' ); ?></a>
+					<span class="eat-queue-meta"><?php echo esc_html( get_the_author_meta( 'display_name', $post->post_author ) ); ?> · <?php echo human_time_diff( strtotime( $post->post_modified ) ); ?> ago</span>
+				</div>
+				<?php endforeach; ?>
+			</div>
+			<?php else : ?>
+			<div class="eat-queue-empty">✓ Nothing pending review</div>
+			<?php endif; ?>
 
-    if ( current_user_can( 'upload_files' ) ) {
-        wp_add_dashboard_widget( 'ew_media_quick_start', '✦ Media Library', 'eat_render_media_quick_start_widget', null, null, 'normal', 'core' );
-    }
+			<?php if ( ! empty( $changes_requested ) ) : ?>
+			<div class="eat-queue-group eat-queue-changes">
+				<div class="eat-queue-label">Changes Requested (<?php echo count( $changes_requested ); ?>)</div>
+				<?php foreach ( $changes_requested as $post ) : ?>
+				<div class="eat-queue-item">
+					<a href="<?php echo esc_url( admin_url( 'post.php?post=' . $post->ID . '&action=edit' ) ); ?>"><?php echo esc_html( $post->post_title ?: '(Untitled)' ); ?></a>
+					<span class="eat-queue-meta"><?php echo human_time_diff( strtotime( $post->post_modified ) ); ?> ago</span>
+				</div>
+				<?php endforeach; ?>
+			</div>
+			<?php endif; ?>
 
-    if ( current_user_can( 'edit_posts' ) ) {
-        wp_add_dashboard_widget( 'ew_open_change_requests', '✦ Open Change Requests', 'eat_render_open_change_requests_widget', null, null, 'normal', 'core' );
-    }
+			<?php if ( ! empty( $approved ) ) : ?>
+			<div class="eat-queue-group eat-queue-approved">
+				<div class="eat-queue-label">Approved (<?php echo count( $approved ); ?>)</div>
+				<?php foreach ( $approved as $post ) : ?>
+				<div class="eat-queue-item">
+					<a href="<?php echo esc_url( admin_url( 'post.php?post=' . $post->ID . '&action=edit' ) ); ?>"><?php echo esc_html( $post->post_title ?: '(Untitled)' ); ?></a>
+					<span class="eat-queue-meta"><?php echo esc_html( get_the_author_meta( 'display_name', $post->post_author ) ); ?> · ready to publish</span>
+				</div>
+				<?php endforeach; ?>
+			</div>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
 
-    if ( current_user_can( 'read' ) ) {
-        wp_add_dashboard_widget( 'ew_author_guide', '✦ Author Guide', 'eat_render_component_library_widget', null, null, 'normal', 'core' );
-    }
+	/**
+	 * Renders dashboard notification pills and recent updates list.
+	 *
+	 * @return void
+	 */
+	public function render_notifications_widget() {
+		$counts                  = wp_count_posts( 'post' );
+		$pending_count           = isset( $counts->pending ) ? (int) $counts->pending : 0;
+		$changes_requested_count = isset( $counts->changes_requested ) ? (int) $counts->changes_requested : 0;
+		$approved_count          = isset( $counts->approved ) ? (int) $counts->approved : 0;
+		$future_count            = isset( $counts->future ) ? (int) $counts->future : 0;
 
-    wp_add_dashboard_widget( 'ew_editorial_queue', '✦ Editorial Queue', 'eat_render_dashboard_widget' );
-    wp_add_dashboard_widget( 'ew_editorial_notifications', '✦ Editorial Notifications', 'eat_render_notifications_widget', null, null, 'side', 'high' );
-}
+		$recent_updates = get_posts(
+			array(
+				'post_status' => array( 'draft', 'pending', 'changes_requested', 'approved', 'future', 'publish' ),
+				'numberposts' => 4,
+				'orderby'     => 'modified',
+				'order'       => 'DESC',
+			)
+		);
+		?>
+		<div class="eat-notifications-panel">
+			<div class="eat-notifications-summary">
+				<a class="eat-note-pill is-pending" href="<?php echo esc_url( admin_url( 'edit.php?post_status=pending&post_type=post' ) ); ?>">
+					<strong><?php echo esc_html( (string) $pending_count ); ?></strong>
+					<span>Pending</span>
+				</a>
+				<a class="eat-note-pill is-changes" href="<?php echo esc_url( admin_url( 'edit.php?post_status=changes_requested&post_type=post' ) ); ?>">
+					<strong><?php echo esc_html( (string) $changes_requested_count ); ?></strong>
+					<span>Changes</span>
+				</a>
+				<a class="eat-note-pill is-approved" href="<?php echo esc_url( admin_url( 'edit.php?post_status=approved&post_type=post' ) ); ?>">
+					<strong><?php echo esc_html( (string) $approved_count ); ?></strong>
+					<span>Approved</span>
+				</a>
+				<a class="eat-note-pill is-scheduled" href="<?php echo esc_url( admin_url( 'edit.php?post_status=future&post_type=post' ) ); ?>">
+					<strong><?php echo esc_html( (string) $future_count ); ?></strong>
+					<span>Scheduled</span>
+				</a>
+			</div>
 
-function eat_render_dashboard_widget() {
-    $pending  = get_posts( [ 'post_status' => 'pending', 'numberposts' => 10, 'orderby' => 'modified', 'order' => 'DESC' ] );
-    $changes_requested = get_posts( [ 'post_status' => 'changes_requested', 'numberposts' => 10, 'orderby' => 'modified', 'order' => 'DESC' ] );
-    $approved = get_posts( [ 'post_status' => 'approved', 'numberposts' => 10, 'orderby' => 'modified', 'order' => 'DESC' ] );
-    ?>
-    <div class="eat-dashboard-queue">
-        <?php if ( ! empty( $pending ) ) : ?>
-        <div class="eat-queue-group">
-            <div class="eat-queue-label">Pending (<?php echo count( $pending ); ?>)</div>
-            <?php foreach ( $pending as $post ) : ?>
-            <div class="eat-queue-item">
-                <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $post->ID . '&action=edit' ) ); ?>"><?php echo esc_html( $post->post_title ?: '(Untitled)' ); ?></a>
-                <span class="eat-queue-meta"><?php echo esc_html( get_the_author_meta( 'display_name', $post->post_author ) ); ?> · <?php echo human_time_diff( strtotime( $post->post_modified ) ); ?> ago</span>
-            </div>
-            <?php endforeach; ?>
-        </div>
-        <?php else : ?>
-        <div class="eat-queue-empty">✓ Nothing pending review</div>
-        <?php endif; ?>
-        <?php if ( ! empty( $changes_requested ) ) : ?>
-        <div class="eat-queue-group eat-queue-changes">
-            <div class="eat-queue-label">Changes Requested (<?php echo count( $changes_requested ); ?>)</div>
-            <?php foreach ( $changes_requested as $post ) : ?>
-            <div class="eat-queue-item">
-                <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $post->ID . '&action=edit' ) ); ?>"><?php echo esc_html( $post->post_title ?: '(Untitled)' ); ?></a>
-                <span class="eat-queue-meta"><?php echo human_time_diff( strtotime( $post->post_modified ) ); ?> ago</span>
-            </div>
-            <?php endforeach; ?>
-        </div>
-        <?php endif; ?>
-        <?php if ( ! empty( $approved ) ) : ?>
-        <div class="eat-queue-group eat-queue-approved">
-            <div class="eat-queue-label">Approved (<?php echo count( $approved ); ?>)</div>
-            <?php foreach ( $approved as $post ) : ?>
-            <div class="eat-queue-item">
-                <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $post->ID . '&action=edit' ) ); ?>"><?php echo esc_html( $post->post_title ?: '(Untitled)' ); ?></a>
-                <span class="eat-queue-meta"><?php echo esc_html( get_the_author_meta( 'display_name', $post->post_author ) ); ?> · ready to publish</span>
-            </div>
-            <?php endforeach; ?>
-        </div>
-        <?php endif; ?>
-    </div>
-    <?php
-}
+			<div class="eat-notifications-block">
+				<div class="eat-notifications-title">Recent Updates</div>
+				<?php if ( empty( $recent_updates ) ) : ?>
+					<p class="eat-notifications-empty">No post activity yet.</p>
+				<?php else : ?>
+					<ul class="eat-notifications-list">
+						<?php foreach ( $recent_updates as $post ) : ?>
+							<li>
+								<a href="<?php echo esc_url( admin_url( 'post.php?post=' . $post->ID . '&action=edit' ) ); ?>"><?php echo esc_html( $post->post_title ?: '(Untitled)' ); ?></a>
+								<span><?php echo esc_html( human_time_diff( strtotime( $post->post_modified ) ) ); ?> ago</span>
+							</li>
+						<?php endforeach; ?>
+					</ul>
+				<?php endif; ?>
+			</div>
+		</div>
+		<?php
+	}
 
-function eat_render_notifications_widget() {
-    $counts = wp_count_posts( 'post' );
-    $pending_count = isset( $counts->pending ) ? (int) $counts->pending : 0;
-    $changes_requested_count = isset( $counts->changes_requested ) ? (int) $counts->changes_requested : 0;
-    $approved_count = isset( $counts->approved ) ? (int) $counts->approved : 0;
-    $future_count = isset( $counts->future ) ? (int) $counts->future : 0;
+	/**
+	 * Renders a quick-start card for writers.
+	 *
+	 * @return void
+	 */
+	public function render_writer_quick_start_widget() {
+		$new_post_url = admin_url( 'post-new.php' );
+		?>
+		<div class="eat-writer-quick-start">
+			<p class="eat-writer-quick-start-copy">Open a fresh draft and start writing right away.</p>
+			<a class="button button-primary eat-writer-quick-start-button" href="<?php echo esc_url( $new_post_url ); ?>">Add New Post</a>
+		</div>
+		<?php
+	}
 
-    $recent_updates = get_posts( [
-        'post_status' => [ 'draft', 'pending', 'changes_requested', 'approved', 'future', 'publish' ],
-        'numberposts' => 4,
-        'orderby' => 'modified',
-        'order' => 'DESC',
-    ] );
-    ?>
-    <div class="eat-notifications-panel">
-        <div class="eat-notifications-summary">
-            <a class="eat-note-pill is-pending" href="<?php echo esc_url( admin_url( 'edit.php?post_status=pending&post_type=post' ) ); ?>">
-                <strong><?php echo esc_html( (string) $pending_count ); ?></strong>
-                <span>Pending</span>
-            </a>
-            <a class="eat-note-pill is-changes" href="<?php echo esc_url( admin_url( 'edit.php?post_status=changes_requested&post_type=post' ) ); ?>">
-                <strong><?php echo esc_html( (string) $changes_requested_count ); ?></strong>
-                <span>Changes</span>
-            </a>
-            <a class="eat-note-pill is-approved" href="<?php echo esc_url( admin_url( 'edit.php?post_status=approved&post_type=post' ) ); ?>">
-                <strong><?php echo esc_html( (string) $approved_count ); ?></strong>
-                <span>Approved</span>
-            </a>
-            <a class="eat-note-pill is-scheduled" href="<?php echo esc_url( admin_url( 'edit.php?post_status=future&post_type=post' ) ); ?>">
-                <strong><?php echo esc_html( (string) $future_count ); ?></strong>
-                <span>Scheduled</span>
-            </a>
-        </div>
+	/**
+	 * Renders media library quick actions.
+	 *
+	 * @return void
+	 */
+	public function render_media_quick_start_widget() {
+		$media_upload_url  = admin_url( 'media-new.php' );
+		$media_library_url = admin_url( 'upload.php' );
+		?>
+		<div class="eat-media-quick-start">
+			<p class="eat-media-quick-start-copy">Jump straight into uploads or browse the media library.</p>
+			<div class="eat-media-quick-start-actions">
+				<a class="button button-primary eat-media-quick-start-button" href="<?php echo esc_url( $media_upload_url ); ?>">Upload Media</a>
+				<a class="button eat-media-quick-start-secondary" href="<?php echo esc_url( $media_library_url ); ?>">Open Library</a>
+			</div>
+		</div>
+		<?php
+	}
 
-        <div class="eat-notifications-block">
-            <div class="eat-notifications-title">Recent Updates</div>
-            <?php if ( empty( $recent_updates ) ) : ?>
-                <p class="eat-notifications-empty">No post activity yet.</p>
-            <?php else : ?>
-                <ul class="eat-notifications-list">
-                    <?php foreach ( $recent_updates as $post ) : ?>
-                        <li>
-                            <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $post->ID . '&action=edit' ) ); ?>"><?php echo esc_html( $post->post_title ?: '(Untitled)' ); ?></a>
-                            <span><?php echo esc_html( human_time_diff( strtotime( $post->post_modified ) ) ); ?> ago</span>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
-            <?php endif; ?>
-        </div>
-    </div>
-    <?php
-}
+	/**
+	 * Calculates age in days for a change request row.
+	 *
+	 * @param WP_Post $post Post object.
+	 *
+	 * @return int
+	 */
+	private function get_change_request_age_in_days( $post ) {
+		$requested_timestamp = 0;
 
-function eat_render_writer_quick_start_widget() {
-    $new_post_url = admin_url( 'post-new.php' );
-    ?>
-    <div class="eat-writer-quick-start">
-        <p class="eat-writer-quick-start-copy">Open a fresh draft and start writing right away.</p>
-        <a class="button button-primary eat-writer-quick-start-button" href="<?php echo esc_url( $new_post_url ); ?>">Add New Post</a>
-    </div>
-    <?php
-}
+		if ( function_exists( 'ew_get_active_change_request_comment' ) ) {
+			$active_request = ew_get_active_change_request_comment( $post->ID );
+			if ( $active_request ) {
+				$requested_timestamp = mysql2date( 'U', $active_request->comment_date_gmt ?: $active_request->comment_date, false );
+			}
+		}
 
-function eat_render_media_quick_start_widget() {
-    $media_upload_url  = admin_url( 'media-new.php' );
-    $media_library_url = admin_url( 'upload.php' );
-    ?>
-    <div class="eat-media-quick-start">
-        <p class="eat-media-quick-start-copy">Jump straight into uploads or browse the media library.</p>
-        <div class="eat-media-quick-start-actions">
-            <a class="button button-primary eat-media-quick-start-button" href="<?php echo esc_url( $media_upload_url ); ?>">Upload Media</a>
-            <a class="button eat-media-quick-start-secondary" href="<?php echo esc_url( $media_library_url ); ?>">Open Library</a>
-        </div>
-    </div>
-    <?php
-}
+		if ( ! $requested_timestamp ) {
+			$requested_timestamp = get_post_modified_time( 'U', true, $post );
+		}
 
-function eat_get_change_request_age_in_days( $post ) {
-    $requested_timestamp = 0;
+		$now = current_time( 'timestamp', true );
+		$age = max( 1, (int) ceil( max( 0, $now - $requested_timestamp ) / DAY_IN_SECONDS ) );
 
-    if ( function_exists( 'ew_get_active_change_request_comment' ) ) {
-        $active_request = ew_get_active_change_request_comment( $post->ID );
-        if ( $active_request ) {
-            $requested_timestamp = mysql2date( 'U', $active_request->comment_date_gmt ?: $active_request->comment_date, false );
-        }
-    }
+		return $age;
+	}
 
-    if ( ! $requested_timestamp ) {
-        $requested_timestamp = get_post_modified_time( 'U', true, $post );
-    }
+	/**
+	 * Renders open change requests widget.
+	 *
+	 * @return void
+	 */
+	public function render_open_change_requests_widget() {
+		$query_args = array(
+			'post_type'      => 'post',
+			'post_status'    => 'changes_requested',
+			'posts_per_page' => 6,
+			'orderby'        => 'modified',
+			'order'          => 'DESC',
+		);
 
-    $now = current_time( 'timestamp', true );
-    $age = max( 1, (int) ceil( max( 0, $now - $requested_timestamp ) / DAY_IN_SECONDS ) );
+		if ( $this->user_is_writer() ) {
+			$query_args['author'] = get_current_user_id();
+		}
 
-    return $age;
-}
+		$changes_requested     = get_posts( $query_args );
+		$changes_requested_url = admin_url( 'edit.php?post_status=changes_requested&post_type=post' );
+		?>
+		<div class="eat-open-requests-panel">
+			<?php if ( empty( $changes_requested ) ) : ?>
+				<p class="eat-open-requests-empty">No open change requests right now.</p>
+			<?php else : ?>
+				<div class="eat-open-requests-summary">
+					<strong><?php echo esc_html( (string) count( $changes_requested ) ); ?></strong>
+					<span><?php echo esc_html( 1 === count( $changes_requested ) ? 'open request needs attention' : 'open requests need attention' ); ?></span>
+				</div>
+				<ul class="eat-open-requests-list">
+					<?php foreach ( $changes_requested as $post ) : ?>
+						<?php $days_open = $this->get_change_request_age_in_days( $post ); ?>
+						<li class="eat-open-requests-item">
+							<a href="<?php echo esc_url( admin_url( 'post.php?post=' . $post->ID . '&action=edit' ) ); ?>"><?php echo esc_html( $post->post_title ?: '(Untitled)' ); ?></a>
+							<span><?php echo esc_html( sprintf( _n( '%d day open', '%d days open', $days_open, 'editorial' ), $days_open ) ); ?></span>
+						</li>
+					<?php endforeach; ?>
+				</ul>
+				<a class="eat-open-requests-link" href="<?php echo esc_url( $changes_requested_url ); ?>">View all open requests</a>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
 
-function eat_render_open_change_requests_widget() {
-    $query_args = [
-        'post_type'      => 'post',
-        'post_status'    => 'changes_requested',
-        'posts_per_page' => 6,
-        'orderby'        => 'modified',
-        'order'          => 'DESC',
-    ];
+	/**
+	 * Renders the author guide/component library links widget.
+	 *
+	 * @return void
+	 */
+	public function render_component_library_widget() {
+		$resources = array(
+			array(
+				'title'       => 'Gutenberg Blocks Guide',
+				'description' => 'Placeholder for block examples, implementation notes, and editor usage guidance.',
+				'url'         => home_url( '/docs/gutenberg-blocks/' ),
+			),
+			array(
+				'title'       => 'Page Templates',
+				'description' => 'Placeholder for approved page templates, layout guidance, and when to use each pattern.',
+				'url'         => home_url( '/docs/page-templates/' ),
+			),
+			array(
+				'title'       => 'Storybook',
+				'description' => 'Placeholder for the shared UI component catalog and usage patterns.',
+				'url'         => home_url( '/docs/storybook/' ),
+			),
+		);
+		?>
+		<div class="eat-component-library">
+			<p class="eat-component-library-copy">Quick links to the author guide, Gutenberg usage notes, and component library documentation. Placeholder pages for now.</p>
+			<ul class="eat-component-library-list">
+				<?php foreach ( $resources as $resource ) : ?>
+					<li class="eat-component-library-item">
+						<a class="eat-component-library-link" href="<?php echo esc_url( $resource['url'] ); ?>">
+							<strong><?php echo esc_html( $resource['title'] ); ?></strong>
+							<span><?php echo esc_html( $resource['description'] ); ?></span>
+						</a>
+					</li>
+				<?php endforeach; ?>
+			</ul>
+		</div>
+		<?php
+	}
 
-    if ( eat_user_is_writer() ) {
-        $query_args['author'] = get_current_user_id();
-    }
+	/**
+	 * Adds an inline split preview panel on post edit screens.
+	 *
+	 * @param string $hook Current admin screen hook suffix.
+	 *
+	 * @return void
+	 */
+	public function enqueue_split_view( $hook ) {
+		if ( ! in_array( $hook, array( 'post.php', 'post-new.php' ), true ) ) {
+			return;
+		}
 
-    $changes_requested = get_posts( $query_args );
-    $changes_requested_url = admin_url( 'edit.php?post_status=changes_requested&post_type=post' );
-    ?>
-    <div class="eat-open-requests-panel">
-        <?php if ( empty( $changes_requested ) ) : ?>
-            <p class="eat-open-requests-empty">No open change requests right now.</p>
-        <?php else : ?>
-            <div class="eat-open-requests-summary">
-                <strong><?php echo esc_html( (string) count( $changes_requested ) ); ?></strong>
-                <span><?php echo esc_html( count( $changes_requested ) === 1 ? 'open request needs attention' : 'open requests need attention' ); ?></span>
-            </div>
-            <ul class="eat-open-requests-list">
-                <?php foreach ( $changes_requested as $post ) : ?>
-                    <?php $days_open = eat_get_change_request_age_in_days( $post ); ?>
-                    <li class="eat-open-requests-item">
-                        <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $post->ID . '&action=edit' ) ); ?>"><?php echo esc_html( $post->post_title ?: '(Untitled)' ); ?></a>
-                        <span><?php echo esc_html( sprintf( _n( '%d day open', '%d days open', $days_open, 'editorial' ), $days_open ) ); ?></span>
-                    </li>
-                <?php endforeach; ?>
-            </ul>
-            <a class="eat-open-requests-link" href="<?php echo esc_url( $changes_requested_url ); ?>">View all open requests</a>
-        <?php endif; ?>
-    </div>
-    <?php
-}
+		global $post;
+		if ( ! $post || ! in_array( $post->post_status, array( 'draft', 'pending', 'changes_requested', 'approved' ), true ) ) {
+			return;
+		}
 
-function eat_render_component_library_widget() {
-    $resources = [
-        [
-            'title'       => 'Gutenberg Blocks Guide',
-            'description' => 'Placeholder for block examples, implementation notes, and editor usage guidance.',
-            'url'         => home_url( '/docs/gutenberg-blocks/' ),
-        ],
-        [
-            'title'       => 'Page Templates',
-            'description' => 'Placeholder for approved page templates, layout guidance, and when to use each pattern.',
-            'url'         => home_url( '/docs/page-templates/' ),
-        ],
-        [
-            'title'       => 'Storybook',
-            'description' => 'Placeholder for the shared UI component catalog and usage patterns.',
-            'url'         => home_url( '/docs/storybook/' ),
-        ],
-    ];
-    ?>
-    <div class="eat-component-library">
-        <p class="eat-component-library-copy">Quick links to the author guide, Gutenberg usage notes, and component library documentation. Placeholder pages for now.</p>
-        <ul class="eat-component-library-list">
-            <?php foreach ( $resources as $resource ) : ?>
-                <li class="eat-component-library-item">
-                    <a class="eat-component-library-link" href="<?php echo esc_url( $resource['url'] ); ?>">
-                        <strong><?php echo esc_html( $resource['title'] ); ?></strong>
-                        <span><?php echo esc_html( $resource['description'] ); ?></span>
-                    </a>
-                </li>
-            <?php endforeach; ?>
-        </ul>
-    </div>
-    <?php
-}
+		if ( ! current_user_can( 'edit_post', $post->ID ) ) {
+			return;
+		}
 
+		if ( ! function_exists( 'ew_get_preview_url' ) ) {
+			return;
+		}
 
-// ════════════════════════════════════════════════════════════════════════════
-// 7. SPLIT VIEW — inline preview panel (editors only, post edit screen)
-// ════════════════════════════════════════════════════════════════════════════
+		$preview_url = ew_get_preview_url( $post->ID );
 
-add_action( 'admin_enqueue_scripts', 'eat_enqueue_split_view' );
-function eat_enqueue_split_view( $hook ) {
-    if ( ! in_array( $hook, [ 'post.php', 'post-new.php' ], true ) ) return;
-
-    global $post;
-    if ( ! $post || ! in_array( $post->post_status, [ 'draft', 'pending', 'changes_requested', 'approved' ], true ) ) return;
-    if ( ! current_user_can( 'edit_post', $post->ID ) ) return;
-
-    $preview_url = ew_get_preview_url( $post->ID );
-
-    wp_add_inline_style( 'editorial-admin-theme', '
+		wp_add_inline_style(
+			'editorial-admin-theme',
+			'
         body { --eat-split-width: min(48vw, 760px); }
 
         #eat-split-toggle {
@@ -688,9 +874,12 @@ function eat_enqueue_split_view( $hook ) {
                 margin-right: 0 !important;
             }
         }
-    ' );
+    '
+		);
 
-    wp_add_inline_script( 'jquery', '
+		wp_add_inline_script(
+			'jquery',
+			'
     jQuery(function($){
         var previewUrl = ' . wp_json_encode( $preview_url ) . ';
         var active = false;
@@ -766,5 +955,9 @@ function eat_enqueue_split_view( $hook ) {
             setTimeout(enableSplit, 400);
         }
     });
-    ' );
+    '
+		);
+	}
 }
+
+Editorial_Admin_Theme::init();

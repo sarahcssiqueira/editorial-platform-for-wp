@@ -11,18 +11,82 @@
 
 defined( 'ABSPATH' ) || exit;
 
-// ─── CONFIG ────────────────────────────────────────────────────────────────
-// Set EDITORIAL_SLACK_WEBHOOK in wp-config.php to enable Slack notifications.
-// define( 'EDITORIAL_SLACK_WEBHOOK', 'https://hooks.slack.com/services/XXX/YYY/ZZZ' );
-// ───────────────────────────────────────────────────────────────────────────
+/**
+ * Handles editorial workflow features.
+ */
+final class Editorial_Workflow {
+
+    /**
+     * Singleton instance.
+     *
+     * @var Editorial_Workflow|null
+     */
+    private static $instance = null;
+
+    /**
+     * Returns singleton instance.
+     *
+     * @return Editorial_Workflow
+     */
+    public static function instance() {
+        if ( null === self::$instance ) {
+            self::$instance = new self();
+            self::$instance->register_hooks();
+        }
+
+        return self::$instance;
+    }
+
+    /**
+     * Registers all plugin hooks.
+     *
+     * @return void
+     */
+    private function register_hooks() {
+        add_action( 'init', array( $this, 'ew_register_post_statuses' ) );
+        add_action( 'init', array( $this, 'ew_set_role_capabilities' ) );
+        add_filter( 'user_has_cap', array( $this, 'ew_grant_publish_cap_for_approved_posts' ), 10, 4 );
+        add_action( 'post_submitbox_misc_actions', array( $this, 'ew_submit_for_review_button' ) );
+        add_action( 'save_post', array( $this, 'ew_handle_submit_for_review' ), 10, 2 );
+        add_action( 'transition_post_status', array( $this, 'ew_notify_editors_when_pending' ), 10, 3 );
+        add_action( 'admin_head-post.php', array( $this, 'ew_output_change_request_styles' ) );
+        add_action( 'admin_head-post-new.php', array( $this, 'ew_output_change_request_styles' ) );
+        add_action( 'add_meta_boxes', array( $this, 'ew_add_feedback_metabox' ) );
+        add_filter( 'wp_insert_post_data', array( $this, 'ew_intercept_editor_publish' ), 10, 2 );
+        add_action( 'save_post', array( $this, 'ew_handle_review_action' ), 10, 2 );
+        add_action( 'save_post', array( $this, 'ew_handle_change_resolution' ), 10, 2 );
+        add_action( 'wp_ajax_ew_submit_for_review', array( $this, 'ew_ajax_submit_for_review' ) );
+        add_action( 'wp_ajax_ew_review_action', array( $this, 'ew_ajax_review_action' ) );
+        add_action( 'wp_ajax_ew_update_changes', array( $this, 'ew_ajax_update_changes' ) );
+        add_action( 'pre_get_posts', array( $this, 'ew_allow_public_preview_query' ) );
+        add_filter( 'posts_results', array( $this, 'ew_filter_public_preview_results' ), 10, 2 );
+        add_filter( 'redirect_canonical', array( $this, 'ew_disable_public_preview_canonical' ), 10, 2 );
+        add_action( 'wp_head', array( $this, 'ew_public_preview_noindex' ) );
+        add_action( 'transition_post_status', array( $this, 'ew_clear_cache_on_publish' ), 10, 3 );
+        add_filter( 'display_post_states', array( $this, 'ew_display_post_states' ), 10, 2 );
+        add_action( 'admin_footer-post.php', array( $this, 'ew_inject_status_js' ) );
+        add_action( 'admin_footer-post-new.php', array( $this, 'ew_inject_status_js' ) );
+        add_action( 'enqueue_block_editor_assets', array( $this, 'ew_enqueue_block_editor_workflow_actions' ) );
+    }
+
+/**
+ * Configuration.
+ *
+ * Set EDITORIAL_SLACK_WEBHOOK in wp-config.php to enable Slack notifications.
+ *
+ * Example:
+ * define( 'EDITORIAL_SLACK_WEBHOOK', 'https://hooks.slack.com/services/XXX/YYY/ZZZ' );
+ */
 
 
-// ════════════════════════════════════════════════════════════════════════════
-// 1. CUSTOM POST STATUSES
-// ════════════════════════════════════════════════════════════════════════════
+/**
+ * 1. Custom post statuses.
+ */
 
-add_action( 'init', 'ew_register_post_statuses' );
-function ew_register_post_statuses() {
+/**
+ * Registers custom post statuses used by the editorial workflow.
+ */
+public function ew_register_post_statuses() {
 
     register_post_status( 'changes_requested', [
         'label'                     => _x( 'Changes Requested', 'post status', 'editorial' ),
@@ -44,34 +108,50 @@ function ew_register_post_statuses() {
 }
 
 
-// ════════════════════════════════════════════════════════════════════════════
-// 2. ROLE CAPABILITIES
-// ════════════════════════════════════════════════════════════════════════════
+/**
+ * 2. Role capabilities.
+ */
 
-function ew_get_writer_role_slugs() {
+/**
+ * Returns the role slugs treated as writers (content authors).
+ */
+public function ew_get_writer_role_slugs() {
     return [ 'author' ];
 }
 
-function ew_get_editor_role_slugs() {
+/**
+ * Returns the role slugs treated as editors/reviewers.
+ */
+public function ew_get_editor_role_slugs() {
     return [ 'editor', 'administrator' ];
 }
 
-function ew_user_has_any_role( $user, $roles ) {
+/**
+ * Returns true if the given user has at least one of the specified roles.
+ */
+public function ew_user_has_any_role( $user, $roles ) {
     $user_roles = (array) ( $user->roles ?? [] );
     return (bool) array_intersect( $user_roles, $roles );
 }
 
-function ew_user_is_writer( $user = null ) {
+/**
+ * Returns true if the given user (or current user) is a writer role.
+ */
+public function ew_user_is_writer( $user = null ) {
     $user = $user ?: wp_get_current_user();
     return ew_user_has_any_role( $user, ew_get_writer_role_slugs() );
 }
 
-add_action( 'init', 'ew_set_role_capabilities' );
-function ew_set_role_capabilities() {
+/**
+ * Adjusts publish capabilities for writer and editor roles on init.
+ */
+public function ew_set_role_capabilities() {
     foreach ( ew_get_writer_role_slugs() as $writer_role_slug ) {
         $writer_role = get_role( $writer_role_slug );
         if ( $writer_role ) {
-            // Writers should not publish directly; publishing is unlocked only after approval.
+            /**
+             * Writers should not publish directly; publishing is unlocked only after approval.
+             */
             $writer_role->remove_cap( 'publish_posts' );
         }
     }
@@ -85,11 +165,17 @@ function ew_set_role_capabilities() {
     }
 }
 
-function ew_user_is_reviewer() {
+/**
+ * Returns true if the current user is an editor or administrator.
+ */
+public function ew_user_is_reviewer() {
     return ew_user_has_any_role( wp_get_current_user(), ew_get_editor_role_slugs() );
 }
 
-function ew_user_can_publish_post( $post_id ) {
+/**
+ * Returns true if the current user is allowed to publish the given post.
+ */
+public function ew_user_can_publish_post( $post_id ) {
     $post = get_post( $post_id );
     if ( ! $post ) return false;
     if ( ew_user_is_reviewer() ) return current_user_can( 'publish_posts' );
@@ -102,7 +188,7 @@ function ew_user_can_publish_post( $post_id ) {
 /**
  * Finds the current post ID from capability args or the edit screen request.
  */
-function ew_get_request_post_id( $args = [] ) {
+public function ew_get_request_post_id( $args = [] ) {
     if ( isset( $args[2] ) && is_numeric( $args[2] ) ) {
         return (int) $args[2];
     }
@@ -118,8 +204,10 @@ function ew_get_request_post_id( $args = [] ) {
     return 0;
 }
 
-add_filter( 'user_has_cap', 'ew_grant_publish_cap_for_approved_posts', 10, 4 );
-function ew_grant_publish_cap_for_approved_posts( $allcaps, $caps, $args, $user ) {
+/**
+ * Grants `publish_posts` to an author when their post is approved.
+ */
+public function ew_grant_publish_cap_for_approved_posts( $allcaps, $caps, $args, $user ) {
     if ( ! is_admin() ) return $allcaps;
     if ( ! isset( $user->ID ) || ! $user->ID ) return $allcaps;
     if ( ew_user_is_reviewer() ) return $allcaps;
@@ -147,12 +235,14 @@ function ew_grant_publish_cap_for_approved_posts( $allcaps, $caps, $args, $user 
 }
 
 
-// ════════════════════════════════════════════════════════════════════════════
-// 3. SUBMIT FOR REVIEW BUTTON (authors)
-// ════════════════════════════════════════════════════════════════════════════
+/**
+ * 3. Submit for review button (authors).
+ */
 
-add_action( 'post_submitbox_misc_actions', 'ew_submit_for_review_button' );
-function ew_submit_for_review_button( $post ) {
+/**
+ * Renders the "Submit for Review" button in the post submit box.
+ */
+public function ew_submit_for_review_button( $post ) {
     if ( ! in_array( $post->post_type, [ 'post', 'page' ], true ) ) return;
     if ( ! current_user_can( 'edit_post', $post->ID ) ) return;
     if ( ew_user_is_reviewer() ) return;
@@ -177,8 +267,10 @@ function ew_submit_for_review_button( $post ) {
     <?php
 }
 
-add_action( 'save_post', 'ew_handle_submit_for_review', 10, 2 );
-function ew_handle_submit_for_review( $post_id, $post ) {
+/**
+ * Handles the submit-for-review form action on save_post.
+ */
+public function ew_handle_submit_for_review( $post_id, $post ) {
     if ( ! isset( $_POST['ew_submit_for_review'] ) ) return;
     if ( ! isset( $_POST['ew_submit_review_nonce'] ) ) return;
     if ( ! wp_verify_nonce( $_POST['ew_submit_review_nonce'], 'ew_submit_review_' . $post_id ) ) return;
@@ -187,37 +279,47 @@ function ew_handle_submit_for_review( $post_id, $post ) {
     ew_process_submit_for_review( $post_id );
 }
 
-function ew_process_submit_for_review( $post_id ) {
+/**
+ * Sets the post to pending and notifies reviewers.
+ */
+public function ew_process_submit_for_review( $post_id ) {
     if ( get_post_status( $post_id ) === 'changes_requested' && ! ew_post_is_ready_for_resubmission( $post_id ) ) {
         return new WP_Error( 'changes_incomplete', __( 'Mark every requested change as done before resubmitting.', 'editorial' ) );
     }
 
-    remove_action( 'save_post', 'ew_handle_submit_for_review', 10 );
+    remove_action( 'save_post', array( $this, 'ew_handle_submit_for_review' ), 10 );
     wp_update_post( [ 'ID' => $post_id, 'post_status' => 'pending' ] );
-    add_action( 'save_post', 'ew_handle_submit_for_review', 10, 2 );
+    add_action( 'save_post', array( $this, 'ew_handle_submit_for_review' ), 10, 2 );
 
     ew_notify_editors_review_requested( $post_id );
 
     return true;
 }
 
-add_action( 'transition_post_status', 'ew_notify_editors_when_pending', 10, 3 );
-function ew_notify_editors_when_pending( $new_status, $old_status, $post ) {
+/**
+ * Notifies editors when a post transitions to pending (outside the submit form flow).
+ */
+public function ew_notify_editors_when_pending( $new_status, $old_status, $post ) {
     if ( $new_status !== 'pending' || $old_status === 'pending' ) return;
     if ( ! in_array( $post->post_type, [ 'post', 'page' ], true ) ) return;
 
-    // Prevent duplicate notifications when submit-for-review handler already sent one.
+    /**
+     * Prevent duplicate notifications when submit-for-review handler already sent one.
+     */
     if ( did_action( 'save_post' ) > 0 && isset( $_POST['ew_submit_for_review'] ) ) return;
 
     ew_notify_editors_review_requested( $post->ID );
 }
 
 
-// ════════════════════════════════════════════════════════════════════════════
-// 4. NOTIFICATIONS
-// ════════════════════════════════════════════════════════════════════════════
+/**
+ * 4. Notifications.
+ */
 
-function ew_notify_editors_review_requested( $post_id ) {
+/**
+ * Emails all editors and pings Slack when a post is submitted for review.
+ */
+public function ew_notify_editors_review_requested( $post_id ) {
     $post     = get_post( $post_id );
     $author   = get_userdata( $post->post_author );
     $edit_url = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
@@ -238,7 +340,10 @@ function ew_notify_editors_review_requested( $post_id ) {
     ew_slack_notify( sprintf( '✦ *Review needed:* <%s|%s> by %s — <%s|Preview>', $edit_url, $post->post_title, $author->display_name, $preview ) );
 }
 
-function ew_notify_author_changes_requested( $post_id, $note ) {
+/**
+ * Emails the post author when an editor requests changes.
+ */
+public function ew_notify_author_changes_requested( $post_id, $note ) {
     $post     = get_post( $post_id );
     $author   = get_userdata( $post->post_author );
     $editor   = wp_get_current_user();
@@ -253,7 +358,10 @@ function ew_notify_author_changes_requested( $post_id, $note ) {
     ew_slack_notify( sprintf( '↩ *Changes requested:* <%s|%s> by %s', $edit_url, $post->post_title, $editor->display_name ) );
 }
 
-function ew_slack_notify( $message ) {
+/**
+ * Sends a message to the configured Slack webhook.
+ */
+public function ew_slack_notify( $message ) {
     if ( ! defined( 'EDITORIAL_SLACK_WEBHOOK' ) ) return;
 
     $response = wp_remote_post( EDITORIAL_SLACK_WEBHOOK, [
@@ -262,7 +370,9 @@ function ew_slack_notify( $message ) {
         'timeout' => 4,
     ] );
 
-    // Keep editorial actions resilient: only log webhook issues in debug mode.
+    /**
+     * Keep editorial actions resilient: only log webhook issues in debug mode.
+     */
     if ( ! defined( 'WP_DEBUG' ) || ! WP_DEBUG ) return;
 
     if ( is_wp_error( $response ) ) {
@@ -278,13 +388,14 @@ function ew_slack_notify( $message ) {
 }
 
 
-// ════════════════════════════════════════════════════════════════════════════
-// 5. EDITOR REVIEW PANEL
-// ════════════════════════════════════════════════════════════════════════════
+/**
+ * 5. Editor review panel.
+ */
 
-add_action( 'admin_head-post.php', 'ew_output_change_request_styles' );
-add_action( 'admin_head-post-new.php', 'ew_output_change_request_styles' );
-function ew_output_change_request_styles() {
+/**
+ * Outputs the admin CSS for the change-request UI on post edit screens.
+ */
+public function ew_output_change_request_styles() {
     global $post;
     if ( ! $post || ! in_array( $post->post_type, [ 'post', 'page' ], true ) ) return;
     ?>
@@ -321,8 +432,10 @@ function ew_output_change_request_styles() {
     <?php
 }
 
-add_action( 'add_meta_boxes', 'ew_add_feedback_metabox' );
-function ew_add_feedback_metabox() {
+/**
+ * Registers the Editorial Workflow meta box on post and page edit screens.
+ */
+public function ew_add_feedback_metabox() {
     global $post;
     if ( ! $post || ! in_array( $post->post_type, [ 'post', 'page' ], true ) ) return;
     if ( ! current_user_can( 'edit_post', $post->ID ) ) return;
@@ -330,7 +443,10 @@ function ew_add_feedback_metabox() {
     add_meta_box( 'ew_feedback_history', 'Editorial Workflow', 'ew_render_feedback_metabox', [ 'post', 'page' ], 'normal', 'high' );
 }
 
-function ew_render_feedback_metabox( $post ) {
+/**
+ * Renders the full editorial feedback meta box.
+ */
+public function ew_render_feedback_metabox( $post ) {
     $comments = get_comments( [
         'post_id' => $post->ID,
         'type'    => 'editorial_change_request',
@@ -551,8 +667,10 @@ function ew_render_feedback_metabox( $post ) {
     echo '</div>';
 }
 
-add_filter( 'wp_insert_post_data', 'ew_intercept_editor_publish', 10, 2 );
-function ew_intercept_editor_publish( $data, $postarr ) {
+/**
+ * Prevents non-reviewers from bypassing the approval gate when saving.
+ */
+public function ew_intercept_editor_publish( $data, $postarr ) {
     if ( ! is_admin() ) return $data;
     if ( ! in_array( $data['post_type'] ?? '', [ 'post', 'page' ], true ) ) return $data;
 
@@ -562,8 +680,10 @@ function ew_intercept_editor_publish( $data, $postarr ) {
         $current_status  = get_post_status( $post_id );
 
         if ( $target_status === 'approved' ) {
-            // Authors can keep already-approved posts approved while editing,
-            // but they must never promote a changes-requested post to approved.
+            /**
+             * Authors can keep already-approved posts approved while editing,
+             * but they must never promote a changes-requested post to approved.
+             */
             if ( $current_status !== 'approved' ) {
                 $data['post_status'] = $current_status === 'changes_requested' ? 'changes_requested' : 'pending';
             }
@@ -597,8 +717,10 @@ function ew_intercept_editor_publish( $data, $postarr ) {
     return $data;
 }
 
-add_action( 'save_post', 'ew_handle_review_action', 10, 2 );
-function ew_handle_review_action( $post_id, $post ) {
+/**
+ * Handles the approve / request-changes form action on save_post.
+ */
+public function ew_handle_review_action( $post_id, $post ) {
     if ( ! isset( $_POST['ew_action'] ) ) return;
     if ( ! isset( $_POST['ew_review_nonce'] ) ) return;
     if ( ! wp_verify_nonce( $_POST['ew_review_nonce'], 'ew_review_action_' . $post_id ) ) return;
@@ -611,8 +733,11 @@ function ew_handle_review_action( $post_id, $post ) {
     ew_process_review_action( $post_id, $action, $note );
 }
 
-function ew_process_review_action( $post_id, $action, $note ) {
-    remove_action( 'save_post', 'ew_handle_review_action', 10 );
+/**
+ * Applies an approve or request_changes decision to the post.
+ */
+public function ew_process_review_action( $post_id, $action, $note ) {
+    remove_action( 'save_post', array( $this, 'ew_handle_review_action' ), 10 );
     if ( $action === 'approve' ) {
         wp_update_post( [ 'ID' => $post_id, 'post_status' => 'approved' ] );
         update_post_meta( $post_id, '_ew_approved_by', get_current_user_id() );
@@ -621,7 +746,7 @@ function ew_process_review_action( $post_id, $action, $note ) {
         $items = ew_parse_change_request_items( $note );
 
         if ( empty( $items ) ) {
-            add_action( 'save_post', 'ew_handle_review_action', 10, 2 );
+            add_action( 'save_post', array( $this, 'ew_handle_review_action' ), 10, 2 );
             return new WP_Error( 'empty_changes', __( 'Add at least one requested change.', 'editorial' ) );
         }
 
@@ -634,12 +759,15 @@ function ew_process_review_action( $post_id, $action, $note ) {
         }
         ew_notify_author_changes_requested( $post_id, $note );
     }
-    add_action( 'save_post', 'ew_handle_review_action', 10, 2 );
+    add_action( 'save_post', array( $this, 'ew_handle_review_action' ), 10, 2 );
 
     return true;
 }
 
-function ew_add_change_request_comment( $post_id, $note, $items = [] ) {
+/**
+ * Stores a change-request comment for the post and attaches item metadata.
+ */
+public function ew_add_change_request_comment( $post_id, $note, $items = [] ) {
     $user = wp_get_current_user();
     $comment_id = wp_insert_comment( [
         'comment_post_ID'      => $post_id,
@@ -661,7 +789,10 @@ function ew_add_change_request_comment( $post_id, $note, $items = [] ) {
     return $comment_id;
 }
 
-function ew_parse_change_request_items( $note ) {
+/**
+ * Splits a freeform change-request note into individual checklist items.
+ */
+public function ew_parse_change_request_items( $note ) {
     $lines = preg_split( '/\r\n|\r|\n/', (string) $note );
     $items = [];
     $index = 1;
@@ -681,7 +812,10 @@ function ew_parse_change_request_items( $note ) {
     return $items;
 }
 
-function ew_normalize_change_request_item( $item ) {
+/**
+ * Sanitizes and normalizes a single change-request item array.
+ */
+public function ew_normalize_change_request_item( $item ) {
     if ( ! is_array( $item ) ) return null;
 
     $text = trim( (string) ( $item['text'] ?? '' ) );
@@ -697,7 +831,10 @@ function ew_normalize_change_request_item( $item ) {
     ];
 }
 
-function ew_get_change_request_items( $comment ) {
+/**
+ * Returns the normalized items for a given change-request comment.
+ */
+public function ew_get_change_request_items( $comment ) {
     $comment_obj = $comment instanceof WP_Comment ? $comment : get_comment( $comment );
     if ( ! $comment_obj ) return [];
 
@@ -712,11 +849,17 @@ function ew_get_change_request_items( $comment ) {
     return $items;
 }
 
-function ew_update_change_request_items( $comment_id, $items ) {
+/**
+ * Persists updated item data on a change-request comment.
+ */
+public function ew_update_change_request_items( $comment_id, $items ) {
     update_comment_meta( $comment_id, '_ew_items', array_values( $items ) );
 }
 
-function ew_get_active_change_request_items_meta( $post_id ) {
+/**
+ * Returns the active change-request items stored in post meta.
+ */
+public function ew_get_active_change_request_items_meta( $post_id ) {
     $items = get_post_meta( $post_id, '_ew_active_change_items', true );
     if ( ! is_array( $items ) || empty( $items ) ) return [];
 
@@ -724,11 +867,17 @@ function ew_get_active_change_request_items_meta( $post_id ) {
     return array_values( array_filter( $items ) );
 }
 
-function ew_update_active_change_request_items_meta( $post_id, $items ) {
+/**
+ * Saves updated active change-request items to post meta.
+ */
+public function ew_update_active_change_request_items_meta( $post_id, $items ) {
     update_post_meta( $post_id, '_ew_active_change_items', array_values( $items ) );
 }
 
-function ew_change_request_items_are_complete( $items ) {
+/**
+ * Returns true when every item in a change-request list is marked done.
+ */
+public function ew_change_request_items_are_complete( $items ) {
     if ( empty( $items ) ) return false;
 
     foreach ( $items as $item ) {
@@ -740,7 +889,10 @@ function ew_change_request_items_are_complete( $items ) {
     return true;
 }
 
-function ew_get_tracked_change_request_comment( $post_id ) {
+/**
+ * Returns the tracked active change-request comment for the post, or null.
+ */
+public function ew_get_tracked_change_request_comment( $post_id ) {
     $active_comment_id = absint( get_post_meta( $post_id, '_ew_active_change_request_id', true ) );
     if ( ! $active_comment_id ) return null;
 
@@ -752,7 +904,10 @@ function ew_get_tracked_change_request_comment( $post_id ) {
     return $active_comment;
 }
 
-function ew_post_is_ready_for_resubmission( $post_id ) {
+/**
+ * Returns true when all outstanding change items are done and the post can be resubmitted.
+ */
+public function ew_post_is_ready_for_resubmission( $post_id ) {
     $items = ew_get_active_change_request_items_meta( $post_id );
     if ( empty( $items ) ) {
         $active_comment = ew_get_tracked_change_request_comment( $post_id );
@@ -764,7 +919,10 @@ function ew_post_is_ready_for_resubmission( $post_id ) {
     return ew_change_request_items_are_complete( $items );
 }
 
-function ew_get_active_change_request_data( $post_id ) {
+/**
+ * Returns a structured array of the active change request data for the post.
+ */
+public function ew_get_active_change_request_data( $post_id ) {
     $active_comment = ew_get_active_change_request_comment( $post_id );
     if ( $active_comment ) {
         return [
@@ -796,7 +954,10 @@ function ew_get_active_change_request_data( $post_id ) {
     ];
 }
 
-function ew_recover_active_change_request_comment( $post_id ) {
+/**
+ * Creates a change-request comment from legacy meta when no tracked comment exists.
+ */
+public function ew_recover_active_change_request_comment( $post_id ) {
     if ( get_post_status( $post_id ) !== 'changes_requested' ) return null;
 
     $latest_note = trim( (string) get_post_meta( $post_id, '_ew_review_note', true ) );
@@ -830,7 +991,10 @@ function ew_recover_active_change_request_comment( $post_id ) {
     return get_comment( $comment_id );
 }
 
-function ew_get_active_change_request_comment( $post_id ) {
+/**
+ * Returns the currently active (unresolved) change-request comment for the post.
+ */
+public function ew_get_active_change_request_comment( $post_id ) {
     $active_comment = ew_get_tracked_change_request_comment( $post_id );
     if ( $active_comment ) {
         $items = ew_get_change_request_items( $active_comment );
@@ -873,7 +1037,10 @@ function ew_get_active_change_request_comment( $post_id ) {
     return null;
 }
 
-function ew_current_user_can_resolve_change_requests( $post ) {
+/**
+ * Returns true if the current user can mark change-request items as done.
+ */
+public function ew_current_user_can_resolve_change_requests( $post ) {
     $user_id = get_current_user_id();
     if ( ! $user_id ) return false;
     if ( ! current_user_can( 'edit_post', $post->ID ) ) return false;
@@ -881,8 +1048,10 @@ function ew_current_user_can_resolve_change_requests( $post ) {
     return (int) $post->post_author === (int) $user_id || current_user_can( 'manage_options' );
 }
 
-add_action( 'save_post', 'ew_handle_change_resolution', 10, 2 );
-function ew_handle_change_resolution( $post_id, $post ) {
+/**
+ * Handles the mark-done form submission on save_post.
+ */
+public function ew_handle_change_resolution( $post_id, $post ) {
     if ( ! isset( $_POST['ew_update_changes'] ) ) return;
     if ( ! isset( $_POST['ew_change_resolution_nonce'] ) ) return;
     if ( ! wp_verify_nonce( $_POST['ew_change_resolution_nonce'], 'ew_change_resolution_' . $post_id ) ) return;
@@ -895,7 +1064,10 @@ function ew_handle_change_resolution( $post_id, $post ) {
     ew_process_change_resolution( $post_id, $submitted_request_id, $completed_ids );
 }
 
-function ew_process_change_resolution( $post_id, $submitted_request_id, $completed_ids ) {
+/**
+ * Marks the selected change-request items as done and resubmits if all are complete.
+ */
+public function ew_process_change_resolution( $post_id, $submitted_request_id, $completed_ids ) {
     $active_request = ew_get_active_change_request_comment( $post_id );
     $items          = ew_get_active_change_request_items_meta( $post_id );
 
@@ -938,8 +1110,10 @@ function ew_process_change_resolution( $post_id, $submitted_request_id, $complet
     return true;
 }
 
-add_action( 'wp_ajax_ew_submit_for_review', 'ew_ajax_submit_for_review' );
-function ew_ajax_submit_for_review() {
+/**
+ * AJAX handler for authors submitting a post for review.
+ */
+public function ew_ajax_submit_for_review() {
     $post_id = absint( $_POST['post_id'] ?? 0 );
     if ( ! $post_id ) {
         wp_send_json_error( [ 'message' => __( 'Missing post ID.', 'editorial' ) ], 400 );
@@ -961,8 +1135,10 @@ function ew_ajax_submit_for_review() {
     wp_send_json_success( [ 'redirect' => get_edit_post_link( $post_id, 'raw' ) ] );
 }
 
-add_action( 'wp_ajax_ew_review_action', 'ew_ajax_review_action' );
-function ew_ajax_review_action() {
+/**
+ * AJAX handler for editors approving or requesting changes on a post.
+ */
+public function ew_ajax_review_action() {
     $post_id = absint( $_POST['post_id'] ?? 0 );
     $action  = sanitize_text_field( $_POST['ew_action'] ?? '' );
     $note    = sanitize_textarea_field( $_POST['ew_review_note'] ?? '' );
@@ -987,8 +1163,10 @@ function ew_ajax_review_action() {
     wp_send_json_success( [ 'redirect' => get_edit_post_link( $post_id, 'raw' ) ] );
 }
 
-add_action( 'wp_ajax_ew_update_changes', 'ew_ajax_update_changes' );
-function ew_ajax_update_changes() {
+/**
+ * AJAX handler for authors marking change-request items as done.
+ */
+public function ew_ajax_update_changes() {
     $post_id               = absint( $_POST['post_id'] ?? 0 );
     $submitted_request_id  = absint( $_POST['ew_change_request_id'] ?? 0 );
     $completed_ids         = array_map( 'sanitize_key', (array) ( $_POST['ew_completed_items'] ?? [] ) );
@@ -1014,7 +1192,10 @@ function ew_ajax_update_changes() {
     wp_send_json_success( [ 'redirect' => get_edit_post_link( $post_id, 'raw' ) ] );
 }
 
-function ew_get_latest_change_request_note( $post_id ) {
+/**
+ * Returns the most recent change-request note for the post.
+ */
+public function ew_get_latest_change_request_note( $post_id ) {
     $comments = get_comments( [
         'post_id' => $post_id,
         'type'    => 'editorial_change_request',
@@ -1032,15 +1213,21 @@ function ew_get_latest_change_request_note( $post_id ) {
 }
 
 
-// ════════════════════════════════════════════════════════════════════════════
-// 6. PREVIEW URL HELPER
-// ════════════════════════════════════════════════════════════════════════════
+/**
+ * 6. Preview URL helper.
+ */
 
-function ew_get_public_preview_ttl() {
+/**
+ * Returns the token TTL for public preview links in seconds.
+ */
+public function ew_get_public_preview_ttl() {
     return (int) apply_filters( 'ew_public_preview_ttl', WEEK_IN_SECONDS * 2 );
 }
 
-function ew_get_public_preview_token( $post_id ) {
+/**
+ * Returns (or creates) a time-limited token for the public preview URL.
+ */
+public function ew_get_public_preview_token( $post_id ) {
     $token   = (string) get_post_meta( $post_id, '_ew_public_preview_token', true );
     $expires = (int) get_post_meta( $post_id, '_ew_public_preview_expires', true );
 
@@ -1055,13 +1242,18 @@ function ew_get_public_preview_token( $post_id ) {
     return $token;
 }
 
-function ew_get_public_preview_url( $post_id ) {
+/**
+ * Returns a shareable public preview URL for any logged-out visitor.
+ */
+public function ew_get_public_preview_url( $post_id ) {
     $post = get_post( $post_id );
     if ( ! $post ) return '';
 
     $token = ew_get_public_preview_token( $post_id );
 
-    // Do not use WordPress core preview params here; they trigger auth checks.
+    /**
+     * Do not use WordPress core preview params here; they trigger auth checks.
+     */
     $base_url = home_url( '/?p=' . $post_id );
 
     return add_query_arg( [
@@ -1071,15 +1263,24 @@ function ew_get_public_preview_url( $post_id ) {
     ], $base_url );
 }
 
-function ew_is_public_preview_request() {
+/**
+ * Returns true when the current request carries public-preview query params.
+ */
+public function ew_is_public_preview_request() {
     return isset( $_GET['ew_public_preview'], $_GET['ew_preview_token'], $_GET['preview_id'] );
 }
 
-function ew_public_preview_post_id() {
+/**
+ * Returns the post ID from the public-preview query parameter.
+ */
+public function ew_public_preview_post_id() {
     return absint( $_GET['preview_id'] ?? 0 );
 }
 
-function ew_public_preview_token_is_valid( $post_id, $token ) {
+/**
+ * Validates the preview token against the stored value and expiry.
+ */
+public function ew_public_preview_token_is_valid( $post_id, $token ) {
     $expected = (string) get_post_meta( $post_id, '_ew_public_preview_token', true );
     $expires  = (int) get_post_meta( $post_id, '_ew_public_preview_expires', true );
 
@@ -1090,8 +1291,10 @@ function ew_public_preview_token_is_valid( $post_id, $token ) {
     return hash_equals( $expected, (string) $token );
 }
 
-add_action( 'pre_get_posts', 'ew_allow_public_preview_query' );
-function ew_allow_public_preview_query( $query ) {
+/**
+ * Allows unpublished posts to be queried during a valid public-preview request.
+ */
+public function ew_allow_public_preview_query( $query ) {
     if ( is_admin() || ! $query->is_main_query() ) return;
     if ( ! ew_is_public_preview_request() ) return;
 
@@ -1104,8 +1307,10 @@ function ew_allow_public_preview_query( $query ) {
     $query->set( 'posts_per_page', 1 );
 }
 
-add_filter( 'posts_results', 'ew_filter_public_preview_results', 10, 2 );
-function ew_filter_public_preview_results( $posts, $query ) {
+/**
+ * Filters query results to only return the previewed post when the token is valid.
+ */
+public function ew_filter_public_preview_results( $posts, $query ) {
     if ( is_admin() || ! $query->is_main_query() ) return $posts;
     if ( ! ew_is_public_preview_request() ) return $posts;
 
@@ -1131,21 +1336,28 @@ function ew_filter_public_preview_results( $posts, $query ) {
     return [];
 }
 
-add_filter( 'redirect_canonical', 'ew_disable_public_preview_canonical', 10, 2 );
-function ew_disable_public_preview_canonical( $redirect_url, $requested_url ) {
+/**
+ * Suppresses canonical redirect for public preview URLs.
+ */
+public function ew_disable_public_preview_canonical( $redirect_url, $requested_url ) {
     if ( ew_is_public_preview_request() ) {
         return false;
     }
     return $redirect_url;
 }
 
-add_action( 'wp_head', 'ew_public_preview_noindex' );
-function ew_public_preview_noindex() {
+/**
+ * Outputs a noindex/nofollow meta tag on public preview pages.
+ */
+public function ew_public_preview_noindex() {
     if ( ! ew_is_public_preview_request() ) return;
     echo '<meta name="robots" content="noindex,nofollow" />' . "\n";
 }
 
-function ew_get_preview_url( $post_id ) {
+/**
+ * Returns an authenticated preview URL for logged-in users.
+ */
+public function ew_get_preview_url( $post_id ) {
     $post = get_post( $post_id );
     if ( ! $post ) return '';
     return add_query_arg( [
@@ -1156,12 +1368,14 @@ function ew_get_preview_url( $post_id ) {
 }
 
 
-// ════════════════════════════════════════════════════════════════════════════
-// 7. CACHE CLEARING ON PUBLISH
-// ════════════════════════════════════════════════════════════════════════════
+/**
+ * 7. Cache clearing on publish.
+ */
 
-add_action( 'transition_post_status', 'ew_clear_cache_on_publish', 10, 3 );
-function ew_clear_cache_on_publish( $new_status, $old_status, $post ) {
+/**
+ * Clears known caching-plugin caches and notifies Slack when a post is published.
+ */
+public function ew_clear_cache_on_publish( $new_status, $old_status, $post ) {
     if ( $new_status !== 'publish' || $old_status === 'publish' ) return;
     if ( ! in_array( $post->post_type, [ 'post', 'page' ], true ) ) return;
 
@@ -1175,12 +1389,14 @@ function ew_clear_cache_on_publish( $new_status, $old_status, $post ) {
 }
 
 
-// ════════════════════════════════════════════════════════════════════════════
-// 8. ADMIN LIST STATES + STATUS JS
-// ════════════════════════════════════════════════════════════════════════════
+/**
+ * 8. Admin list states and status JS.
+ */
 
-add_filter( 'display_post_states', 'ew_display_post_states', 10, 2 );
-function ew_display_post_states( $states, $post ) {
+/**
+ * Adds colored status labels to the post list table.
+ */
+public function ew_display_post_states( $states, $post ) {
     $status = get_post_status( $post->ID );
     if ( $status === 'pending' )  $states['pending']  = '<span style="color:#f59e0b">Pending</span>';
     if ( $status === 'changes_requested' ) $states['changes_requested'] = '<span style="color:#ef4444">Changes Requested</span>';
@@ -1188,9 +1404,10 @@ function ew_display_post_states( $states, $post ) {
     return $states;
 }
 
-add_action( 'admin_footer-post.php',     'ew_inject_status_js' );
-add_action( 'admin_footer-post-new.php', 'ew_inject_status_js' );
-function ew_inject_status_js() {
+/**
+ * Injects JS that sets the correct status value and Publish button label on the classic editor.
+ */
+public function ew_inject_status_js() {
     global $post;
     if ( ! $post ) return;
     $status = get_post_status( $post->ID );
@@ -1226,8 +1443,10 @@ function ew_inject_status_js() {
     <?php
 }
 
-add_action( 'enqueue_block_editor_assets', 'ew_enqueue_block_editor_workflow_actions' );
-function ew_enqueue_block_editor_workflow_actions() {
+/**
+ * Enqueues inline JS for the block editor's editorial workflow action buttons.
+ */
+public function ew_enqueue_block_editor_workflow_actions() {
     $screen = get_current_screen();
     if ( ! $screen || ! in_array( $screen->post_type, [ 'post', 'page' ], true ) ) return;
 
@@ -1380,11 +1599,14 @@ JS
 }
 
 
-// ════════════════════════════════════════════════════════════════════════════
-// 9. HELPERS
-// ════════════════════════════════════════════════════════════════════════════
+/**
+ * 9. Helpers.
+ */
 
-function ew_status_label( $status ) {
+/**
+ * Returns a human-readable label for a given editorial post status slug.
+ */
+public function ew_status_label( $status ) {
     return [
         'draft'             => 'Draft',
         'pending'           => 'Pending (In Review)',
@@ -1394,3 +1616,66 @@ function ew_status_label( $status ) {
         'future'            => 'Scheduled',
     ][ $status ] ?? ucfirst( $status );
 }
+}
+
+Editorial_Workflow::instance();
+
+if ( ! function_exists( 'ew_register_post_statuses' ) ) { function ew_register_post_statuses( ...$args ) { return Editorial_Workflow::instance()->ew_register_post_statuses( ...$args ); } }
+if ( ! function_exists( 'ew_get_writer_role_slugs' ) ) { function ew_get_writer_role_slugs( ...$args ) { return Editorial_Workflow::instance()->ew_get_writer_role_slugs( ...$args ); } }
+if ( ! function_exists( 'ew_get_editor_role_slugs' ) ) { function ew_get_editor_role_slugs( ...$args ) { return Editorial_Workflow::instance()->ew_get_editor_role_slugs( ...$args ); } }
+if ( ! function_exists( 'ew_user_has_any_role' ) ) { function ew_user_has_any_role( ...$args ) { return Editorial_Workflow::instance()->ew_user_has_any_role( ...$args ); } }
+if ( ! function_exists( 'ew_user_is_writer' ) ) { function ew_user_is_writer( ...$args ) { return Editorial_Workflow::instance()->ew_user_is_writer( ...$args ); } }
+if ( ! function_exists( 'ew_set_role_capabilities' ) ) { function ew_set_role_capabilities( ...$args ) { return Editorial_Workflow::instance()->ew_set_role_capabilities( ...$args ); } }
+if ( ! function_exists( 'ew_user_is_reviewer' ) ) { function ew_user_is_reviewer( ...$args ) { return Editorial_Workflow::instance()->ew_user_is_reviewer( ...$args ); } }
+if ( ! function_exists( 'ew_user_can_publish_post' ) ) { function ew_user_can_publish_post( ...$args ) { return Editorial_Workflow::instance()->ew_user_can_publish_post( ...$args ); } }
+if ( ! function_exists( 'ew_get_request_post_id' ) ) { function ew_get_request_post_id( ...$args ) { return Editorial_Workflow::instance()->ew_get_request_post_id( ...$args ); } }
+if ( ! function_exists( 'ew_grant_publish_cap_for_approved_posts' ) ) { function ew_grant_publish_cap_for_approved_posts( ...$args ) { return Editorial_Workflow::instance()->ew_grant_publish_cap_for_approved_posts( ...$args ); } }
+if ( ! function_exists( 'ew_submit_for_review_button' ) ) { function ew_submit_for_review_button( ...$args ) { return Editorial_Workflow::instance()->ew_submit_for_review_button( ...$args ); } }
+if ( ! function_exists( 'ew_handle_submit_for_review' ) ) { function ew_handle_submit_for_review( ...$args ) { return Editorial_Workflow::instance()->ew_handle_submit_for_review( ...$args ); } }
+if ( ! function_exists( 'ew_process_submit_for_review' ) ) { function ew_process_submit_for_review( ...$args ) { return Editorial_Workflow::instance()->ew_process_submit_for_review( ...$args ); } }
+if ( ! function_exists( 'ew_notify_editors_when_pending' ) ) { function ew_notify_editors_when_pending( ...$args ) { return Editorial_Workflow::instance()->ew_notify_editors_when_pending( ...$args ); } }
+if ( ! function_exists( 'ew_notify_editors_review_requested' ) ) { function ew_notify_editors_review_requested( ...$args ) { return Editorial_Workflow::instance()->ew_notify_editors_review_requested( ...$args ); } }
+if ( ! function_exists( 'ew_notify_author_changes_requested' ) ) { function ew_notify_author_changes_requested( ...$args ) { return Editorial_Workflow::instance()->ew_notify_author_changes_requested( ...$args ); } }
+if ( ! function_exists( 'ew_slack_notify' ) ) { function ew_slack_notify( ...$args ) { return Editorial_Workflow::instance()->ew_slack_notify( ...$args ); } }
+if ( ! function_exists( 'ew_output_change_request_styles' ) ) { function ew_output_change_request_styles( ...$args ) { return Editorial_Workflow::instance()->ew_output_change_request_styles( ...$args ); } }
+if ( ! function_exists( 'ew_add_feedback_metabox' ) ) { function ew_add_feedback_metabox( ...$args ) { return Editorial_Workflow::instance()->ew_add_feedback_metabox( ...$args ); } }
+if ( ! function_exists( 'ew_render_feedback_metabox' ) ) { function ew_render_feedback_metabox( ...$args ) { return Editorial_Workflow::instance()->ew_render_feedback_metabox( ...$args ); } }
+if ( ! function_exists( 'ew_intercept_editor_publish' ) ) { function ew_intercept_editor_publish( ...$args ) { return Editorial_Workflow::instance()->ew_intercept_editor_publish( ...$args ); } }
+if ( ! function_exists( 'ew_handle_review_action' ) ) { function ew_handle_review_action( ...$args ) { return Editorial_Workflow::instance()->ew_handle_review_action( ...$args ); } }
+if ( ! function_exists( 'ew_process_review_action' ) ) { function ew_process_review_action( ...$args ) { return Editorial_Workflow::instance()->ew_process_review_action( ...$args ); } }
+if ( ! function_exists( 'ew_add_change_request_comment' ) ) { function ew_add_change_request_comment( ...$args ) { return Editorial_Workflow::instance()->ew_add_change_request_comment( ...$args ); } }
+if ( ! function_exists( 'ew_parse_change_request_items' ) ) { function ew_parse_change_request_items( ...$args ) { return Editorial_Workflow::instance()->ew_parse_change_request_items( ...$args ); } }
+if ( ! function_exists( 'ew_normalize_change_request_item' ) ) { function ew_normalize_change_request_item( ...$args ) { return Editorial_Workflow::instance()->ew_normalize_change_request_item( ...$args ); } }
+if ( ! function_exists( 'ew_get_change_request_items' ) ) { function ew_get_change_request_items( ...$args ) { return Editorial_Workflow::instance()->ew_get_change_request_items( ...$args ); } }
+if ( ! function_exists( 'ew_update_change_request_items' ) ) { function ew_update_change_request_items( ...$args ) { return Editorial_Workflow::instance()->ew_update_change_request_items( ...$args ); } }
+if ( ! function_exists( 'ew_get_active_change_request_items_meta' ) ) { function ew_get_active_change_request_items_meta( ...$args ) { return Editorial_Workflow::instance()->ew_get_active_change_request_items_meta( ...$args ); } }
+if ( ! function_exists( 'ew_update_active_change_request_items_meta' ) ) { function ew_update_active_change_request_items_meta( ...$args ) { return Editorial_Workflow::instance()->ew_update_active_change_request_items_meta( ...$args ); } }
+if ( ! function_exists( 'ew_change_request_items_are_complete' ) ) { function ew_change_request_items_are_complete( ...$args ) { return Editorial_Workflow::instance()->ew_change_request_items_are_complete( ...$args ); } }
+if ( ! function_exists( 'ew_get_tracked_change_request_comment' ) ) { function ew_get_tracked_change_request_comment( ...$args ) { return Editorial_Workflow::instance()->ew_get_tracked_change_request_comment( ...$args ); } }
+if ( ! function_exists( 'ew_post_is_ready_for_resubmission' ) ) { function ew_post_is_ready_for_resubmission( ...$args ) { return Editorial_Workflow::instance()->ew_post_is_ready_for_resubmission( ...$args ); } }
+if ( ! function_exists( 'ew_get_active_change_request_data' ) ) { function ew_get_active_change_request_data( ...$args ) { return Editorial_Workflow::instance()->ew_get_active_change_request_data( ...$args ); } }
+if ( ! function_exists( 'ew_recover_active_change_request_comment' ) ) { function ew_recover_active_change_request_comment( ...$args ) { return Editorial_Workflow::instance()->ew_recover_active_change_request_comment( ...$args ); } }
+if ( ! function_exists( 'ew_get_active_change_request_comment' ) ) { function ew_get_active_change_request_comment( ...$args ) { return Editorial_Workflow::instance()->ew_get_active_change_request_comment( ...$args ); } }
+if ( ! function_exists( 'ew_current_user_can_resolve_change_requests' ) ) { function ew_current_user_can_resolve_change_requests( ...$args ) { return Editorial_Workflow::instance()->ew_current_user_can_resolve_change_requests( ...$args ); } }
+if ( ! function_exists( 'ew_handle_change_resolution' ) ) { function ew_handle_change_resolution( ...$args ) { return Editorial_Workflow::instance()->ew_handle_change_resolution( ...$args ); } }
+if ( ! function_exists( 'ew_process_change_resolution' ) ) { function ew_process_change_resolution( ...$args ) { return Editorial_Workflow::instance()->ew_process_change_resolution( ...$args ); } }
+if ( ! function_exists( 'ew_ajax_submit_for_review' ) ) { function ew_ajax_submit_for_review( ...$args ) { return Editorial_Workflow::instance()->ew_ajax_submit_for_review( ...$args ); } }
+if ( ! function_exists( 'ew_ajax_review_action' ) ) { function ew_ajax_review_action( ...$args ) { return Editorial_Workflow::instance()->ew_ajax_review_action( ...$args ); } }
+if ( ! function_exists( 'ew_ajax_update_changes' ) ) { function ew_ajax_update_changes( ...$args ) { return Editorial_Workflow::instance()->ew_ajax_update_changes( ...$args ); } }
+if ( ! function_exists( 'ew_get_latest_change_request_note' ) ) { function ew_get_latest_change_request_note( ...$args ) { return Editorial_Workflow::instance()->ew_get_latest_change_request_note( ...$args ); } }
+if ( ! function_exists( 'ew_get_public_preview_ttl' ) ) { function ew_get_public_preview_ttl( ...$args ) { return Editorial_Workflow::instance()->ew_get_public_preview_ttl( ...$args ); } }
+if ( ! function_exists( 'ew_get_public_preview_token' ) ) { function ew_get_public_preview_token( ...$args ) { return Editorial_Workflow::instance()->ew_get_public_preview_token( ...$args ); } }
+if ( ! function_exists( 'ew_get_public_preview_url' ) ) { function ew_get_public_preview_url( ...$args ) { return Editorial_Workflow::instance()->ew_get_public_preview_url( ...$args ); } }
+if ( ! function_exists( 'ew_is_public_preview_request' ) ) { function ew_is_public_preview_request( ...$args ) { return Editorial_Workflow::instance()->ew_is_public_preview_request( ...$args ); } }
+if ( ! function_exists( 'ew_public_preview_post_id' ) ) { function ew_public_preview_post_id( ...$args ) { return Editorial_Workflow::instance()->ew_public_preview_post_id( ...$args ); } }
+if ( ! function_exists( 'ew_public_preview_token_is_valid' ) ) { function ew_public_preview_token_is_valid( ...$args ) { return Editorial_Workflow::instance()->ew_public_preview_token_is_valid( ...$args ); } }
+if ( ! function_exists( 'ew_allow_public_preview_query' ) ) { function ew_allow_public_preview_query( ...$args ) { return Editorial_Workflow::instance()->ew_allow_public_preview_query( ...$args ); } }
+if ( ! function_exists( 'ew_filter_public_preview_results' ) ) { function ew_filter_public_preview_results( ...$args ) { return Editorial_Workflow::instance()->ew_filter_public_preview_results( ...$args ); } }
+if ( ! function_exists( 'ew_disable_public_preview_canonical' ) ) { function ew_disable_public_preview_canonical( ...$args ) { return Editorial_Workflow::instance()->ew_disable_public_preview_canonical( ...$args ); } }
+if ( ! function_exists( 'ew_public_preview_noindex' ) ) { function ew_public_preview_noindex( ...$args ) { return Editorial_Workflow::instance()->ew_public_preview_noindex( ...$args ); } }
+if ( ! function_exists( 'ew_get_preview_url' ) ) { function ew_get_preview_url( ...$args ) { return Editorial_Workflow::instance()->ew_get_preview_url( ...$args ); } }
+if ( ! function_exists( 'ew_clear_cache_on_publish' ) ) { function ew_clear_cache_on_publish( ...$args ) { return Editorial_Workflow::instance()->ew_clear_cache_on_publish( ...$args ); } }
+if ( ! function_exists( 'ew_display_post_states' ) ) { function ew_display_post_states( ...$args ) { return Editorial_Workflow::instance()->ew_display_post_states( ...$args ); } }
+if ( ! function_exists( 'ew_inject_status_js' ) ) { function ew_inject_status_js( ...$args ) { return Editorial_Workflow::instance()->ew_inject_status_js( ...$args ); } }
+if ( ! function_exists( 'ew_enqueue_block_editor_workflow_actions' ) ) { function ew_enqueue_block_editor_workflow_actions( ...$args ) { return Editorial_Workflow::instance()->ew_enqueue_block_editor_workflow_actions( ...$args ); } }
+if ( ! function_exists( 'ew_status_label' ) ) { function ew_status_label( ...$args ) { return Editorial_Workflow::instance()->ew_status_label( ...$args ); } }
