@@ -443,6 +443,11 @@ JS
 	 * @return void
 	 */
 	public function setup_dashboard() {
+		$user      = wp_get_current_user();
+		$is_writer = $this->user_is_writer( $user );
+		$is_editor = $this->user_is_editor( $user );
+		$is_admin  = $this->user_is_admin( $user );
+
 		foreach ( array( 'dashboard_activity', 'dashboard_right_now', 'dashboard_site_health' ) as $widget ) {
 			remove_meta_box( $widget, 'dashboard', 'normal' );
 		}
@@ -451,12 +456,16 @@ JS
 			remove_meta_box( $widget, 'dashboard', 'side' );
 		}
 
-		if ( $this->user_is_writer() && current_user_can( 'edit_posts' ) ) {
+		if ( $is_writer && current_user_can( 'edit_posts' ) ) {
 			wp_add_dashboard_widget( 'ew_writer_quick_start', '✦ Start Writing', array( $this, 'render_writer_quick_start_widget' ), null, null, 'normal', 'high' );
 		}
 
-		if ( current_user_can( 'upload_files' ) ) {
+		if ( ( $is_writer || $is_admin ) && current_user_can( 'upload_files' ) ) {
 			wp_add_dashboard_widget( 'ew_media_quick_start', '✦ Media Library', array( $this, 'render_media_quick_start_widget' ), null, null, 'normal', 'core' );
+		}
+
+		if ( ( $is_editor || $is_admin ) && current_user_can( 'edit_others_posts' ) ) {
+			wp_add_dashboard_widget( 'ew_open_content_to_review', '✦ Open Content To Review', array( $this, 'render_open_content_to_review_widget' ), null, null, 'normal', 'high' );
 		}
 
 		if ( current_user_can( 'edit_posts' ) ) {
@@ -464,11 +473,10 @@ JS
 		}
 
 		if ( current_user_can( 'read' ) ) {
-			wp_add_dashboard_widget( 'ew_author_guide', '✦ Author Guide', array( $this, 'render_component_library_widget' ), null, null, 'normal', 'core' );
+			wp_add_dashboard_widget( 'ew_author_guide', '✦ Author Guide', array( $this, 'render_component_library_widget' ), null, null, 'normal', 'low' );
 		}
 
-		wp_add_dashboard_widget( 'ew_editorial_queue', '✦ Editorial Queue', array( $this, 'render_dashboard_widget' ) );
-		wp_add_dashboard_widget( 'ew_editorial_notifications', '✦ Editorial Notifications', array( $this, 'render_notifications_widget' ), null, null, 'side', 'high' );
+		wp_add_dashboard_widget( 'ew_editorial_queue', '✦ Editorial Queue', array( $this, 'render_dashboard_widget' ), null, null, 'normal', 'low' );
 	}
 
 	/**
@@ -689,6 +697,45 @@ JS
 	}
 
 	/**
+	 * Renders the open content to review widget for editors.
+	 *
+	 * @return void
+	 */
+	public function render_open_content_to_review_widget() {
+		$pending_posts = get_posts(
+			array(
+				'post_type'      => 'post',
+				'post_status'    => 'pending',
+				'posts_per_page' => 6,
+				'orderby'        => 'modified',
+				'order'          => 'DESC',
+			)
+		);
+		$pending_posts_url = admin_url( 'edit.php?post_status=pending&post_type=post' );
+		?>
+		<div class="eat-open-requests-panel eat-open-content-review-panel">
+			<?php if ( empty( $pending_posts ) ) : ?>
+				<p class="eat-open-requests-empty">No open content to review right now.</p>
+			<?php else : ?>
+				<div class="eat-open-requests-summary">
+					<strong><?php echo esc_html( (string) count( $pending_posts ) ); ?></strong>
+					<span><?php echo esc_html( 1 === count( $pending_posts ) ? 'post is waiting for review' : 'posts are waiting for review' ); ?></span>
+				</div>
+				<ul class="eat-open-requests-list">
+					<?php foreach ( $pending_posts as $post ) : ?>
+						<li class="eat-open-requests-item">
+							<a href="<?php echo esc_url( admin_url( 'post.php?post=' . $post->ID . '&action=edit' ) ); ?>"><?php echo esc_html( $post->post_title ?: '(Untitled)' ); ?></a>
+							<span><?php echo esc_html( human_time_diff( strtotime( $post->post_modified ) ) ); ?> ago</span>
+						</li>
+					<?php endforeach; ?>
+				</ul>
+				<a class="eat-open-requests-link" href="<?php echo esc_url( $pending_posts_url ); ?>">View all content to review</a>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	/**
 	 * Renders the author guide and component library resource links.
 	 *
 	 * @return void
@@ -706,7 +753,7 @@ JS
 				'url'         => home_url( '/docs/page-templates/' ),
 			),
 			array(
-				'title'       => 'Storybook',
+				'title'       => 'Components Library',
 				'description' => 'Placeholder for the shared UI component catalog and usage patterns.',
 				'url'         => home_url( '/docs/storybook/' ),
 			),

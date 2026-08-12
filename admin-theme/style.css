@@ -1486,6 +1486,22 @@ body.block-editor-page .edit-post-layout__metaboxes .ew-change-batch {
     color: var(--e-red);
 }
 
+/* Open Content To Review keeps the same structure with a distinct accent color. */
+.eat-open-content-review-panel .eat-open-requests-summary {
+    background: var(--e-blue-dim);
+    border: 1px solid rgba(37,99,235,.16);
+}
+
+.eat-open-content-review-panel .eat-open-requests-summary strong {
+    color: var(--e-blue);
+}
+
+.eat-open-content-review-panel .eat-open-requests-item a:hover,
+.eat-open-content-review-panel .eat-open-requests-item span,
+.eat-open-content-review-panel .eat-open-requests-link:hover {
+    color: var(--e-blue);
+}
+
 /* ─── COMPONENT LIBRARY ───────────────────────────────────────────────────── */
 .eat-component-library {
     display: flex;
