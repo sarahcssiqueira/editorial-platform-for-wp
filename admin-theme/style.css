@@ -177,7 +177,7 @@ html,
     border-right: 1px solid var(--e-border-1) !important;
     width: var(--e-sidebar-w) !important;
     top: 10px !important;
-    margin-top: 3px !important;
+    margin-top: 15px !important;
 }
 
 /* Keep main admin layout aligned with custom sidebar width */
@@ -414,7 +414,7 @@ html,
 }
 
 .wrap .page-title-action {
-    background: #fff !important;
+    background: var(--e-surface-1) !important;
     border: 1px solid var(--e-border-1) !important;
     color: var(--e-text-1) !important;
     border-radius: var(--e-radius-sm) !important;
@@ -587,7 +587,7 @@ html,
 }
 
 .tablenav .actions select {
-    background: #fff !important;
+    background: var(--e-surface-1) !important;
     border: 1px solid var(--e-border-1) !important;
     color: var(--e-text-1) !important;
     border-radius: var(--e-radius-sm) !important;
@@ -604,7 +604,7 @@ html,
 
 .tablenav-pages a,
 .tablenav-pages span.current {
-    background: #fff !important;
+    background: var(--e-surface-1) !important;
     border: 1px solid var(--e-border-1) !important;
     color: var(--e-text-2) !important;
     border-radius: var(--e-radius-sm) !important;
@@ -631,7 +631,7 @@ html,
 
 /* ─── POSTS TABLE ───────────────────────────────────────────────────────────── */
 .wp-list-table {
-    background: #ffffff !important;
+    background: var(--e-surface-1) !important;
     border: 1px solid var(--e-border-0) !important;
     border-radius: var(--e-radius-lg) !important;
     overflow: hidden !important;
@@ -758,7 +758,7 @@ html,
 
 /* ─── SEARCH BOX ────────────────────────────────────────────────────────────── */
 .search-box input[type=search] {
-    background: #fff !important;
+    background: var(--e-surface-1) !important;
     border: 1px solid var(--e-border-1) !important;
     color: var(--e-text-1) !important;
     border-radius: var(--e-radius-sm) !important;
@@ -834,7 +834,7 @@ html,
 
 /* ─── SUBMIT BOX ────────────────────────────────────────────────────────────── */
 #submitdiv {
-    background: #ffffff !important;
+    background: var(--e-surface-1) !important;
     border: 1px solid var(--e-border-0) !important;
     border-radius: var(--e-radius-lg) !important;
     box-shadow: 0 1px 2px rgba(0,0,0,.04) !important;
@@ -860,7 +860,7 @@ body.block-editor-page .editor-editor-interface {
 }
 
 body.block-editor-page .edit-post-header {
-    background: #ffffff !important;
+    background: var(--e-surface-1) !important;
     border-bottom: 1px solid var(--e-border-0) !important;
     box-shadow: 0 1px 0 var(--e-border-0) !important;
 }
@@ -878,7 +878,7 @@ body.block-editor-page .editor-styles-wrapper {
 
 body.block-editor-page .edit-post-visual-editor__post-title-wrapper,
 body.block-editor-page .is-root-container.wp-block-post-content {
-    background: #ffffff !important;
+    background: var(--e-surface-1) !important;
     border: 1px solid var(--e-border-0) !important;
     border-radius: var(--e-radius-lg) !important;
     box-shadow: 0 1px 2px rgba(0,0,0,.04) !important;
@@ -903,7 +903,7 @@ body.block-editor-page .is-root-container.wp-block-post-content {
 
 body.block-editor-page .interface-complementary-area,
 body.block-editor-page .edit-post-sidebar {
-    background: #ffffff !important;
+    background: var(--e-surface-1) !important;
     border-left: 1px solid var(--e-border-0) !important;
 }
 
@@ -1105,7 +1105,7 @@ body.block-editor-page .edit-post-layout__metaboxes .ew-change-batch {
 
 .ew-date-input,
 .ew-time-input {
-    background: #fff !important;
+    background: var(--e-surface-1) !important;
     border: 1px solid var(--e-border-1) !important;
     color: var(--e-text-1) !important;
     border-radius: var(--e-radius-sm) !important;
@@ -1546,7 +1546,7 @@ body.block-editor-page .edit-post-layout__metaboxes .ew-change-batch {
 
 /* ─── BUTTONS ───────────────────────────────────────────────────────────────── */
 .wp-core-ui .button {
-    background: #fff !important;
+    background: var(--e-surface-1) !important;
     border: 1px solid var(--e-border-1) !important;
     color: var(--e-text-1) !important;
     border-radius: var(--e-radius-sm) !important;
@@ -1588,7 +1588,7 @@ body.block-editor-page .edit-post-layout__metaboxes .ew-change-batch {
 
 /* ─── NOTICES ───────────────────────────────────────────────────────────────── */
 .notice, div.updated, div.error {
-    background: #fff !important;
+    background: var(--e-surface-1) !important;
     border: 1px solid var(--e-border-0) !important;
     border-left-width: 3px !important;
     border-radius: 0 var(--e-radius-sm) var(--e-radius-sm) 0 !important;
@@ -1615,7 +1615,7 @@ input[type=password],
 input[type=search],
 textarea,
 select {
-    background: #fff !important;
+    background: var(--e-surface-1) !important;
     border: 1px solid var(--e-border-1) !important;
     color: var(--e-text-1) !important;
     border-radius: var(--e-radius-sm) !important;
@@ -1656,7 +1656,7 @@ body.login {
 .login h1 a::before { content: '✦ Editorial'; }
 
 .login form {
-    background: #fff !important;
+    background: var(--e-surface-1) !important;
     border: 1px solid var(--e-border-1) !important;
     border-radius: var(--e-radius-lg) !important;
     box-shadow: 0 4px 24px rgba(0,0,0,.08) !important;
@@ -1701,7 +1701,7 @@ body.login {
 /* ─── SPLIT VIEW ────────────────────────────────────────────────────────────── */
 #eat-split-toggle {
     font-family: var(--e-font) !important;
-    background: #fff !important;
+    background: var(--e-surface-1) !important;
     border: 1px solid var(--e-border-1) !important;
     color: var(--e-text-1) !important;
     font-size: 11px !important;
@@ -1718,7 +1718,7 @@ body.login {
 }
 
 #eat-split-preview-bar {
-    background: #fff !important;
+    background: var(--e-surface-1) !important;
     border-bottom: 1px solid var(--e-border-0) !important;
 }
 
