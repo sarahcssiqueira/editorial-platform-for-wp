@@ -187,7 +187,9 @@ body.wp-admin {
 }
 
 .folded #adminmenu .wp-menu-name,
-.folded #adminmenu .update-plugins {
+.auto-fold #adminmenu .wp-menu-name,
+.folded #adminmenu .update-plugins,
+.auto-fold #adminmenu .update-plugins {
     display: block !important;
 }
 

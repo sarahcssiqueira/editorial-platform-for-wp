@@ -45,6 +45,7 @@ final class Editorial_Admin_Theme {
 		add_action( 'admin_menu', array( $this, 'cleanup_menu' ), 999 );
 		add_filter( 'admin_body_class', array( $this, 'body_class' ) );
 		add_action( 'wp_ajax_eat_set_theme_preference', array( $this, 'set_theme_preference' ) );
+		add_action( 'admin_init', array( $this, 'force_menu_expanded_setting' ) );
 		add_action( 'admin_head', array( $this, 'force_menu_expanded' ) );
 		add_action( 'all_admin_notices', array( $this, 'render_dashboard_intro' ) );
 		add_action( 'admin_bar_menu', array( $this, 'admin_bar' ), 999 );
@@ -299,6 +300,18 @@ JS
 	}
 
 	/**
+	 * Forces the admin sidebar menu-fold user setting to 'open' so WordPress
+	 * never outputs the 'folded' body class server-side.
+	 *
+	 * @return void
+	 */
+	public function force_menu_expanded_setting() {
+		if ( 'o' !== get_user_setting( 'mfold' ) ) {
+			set_user_setting( 'mfold', 'o' );
+		}
+	}
+
+	/**
 	 * Forces the admin menu to remain expanded on dashboard and editor screens.
 	 *
 	 * @return void
@@ -318,7 +331,7 @@ JS
 					return;
 				}
 
-				body.classList.remove('folded', 'auto-fold');
+				body.classList.remove( 'folded', 'auto-fold' );
 			})();
 		</script>
 		<?php
@@ -330,10 +343,17 @@ JS
 	 * @return void
 	 */
 	public function render_dashboard_intro() {
+		static $rendered = false;
+		if ( $rendered ) {
+			return;
+		}
+
 		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
 		if ( ! $screen || 'dashboard' !== $screen->base ) {
 			return;
 		}
+
+		$rendered = true;
 
 		$user       = wp_get_current_user();
 		$name       = $user->display_name ?: __( 'there', 'editorial' );
