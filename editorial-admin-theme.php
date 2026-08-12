@@ -443,6 +443,11 @@ JS
 	 * @return void
 	 */
 	public function setup_dashboard() {
+		$user      = wp_get_current_user();
+		$is_writer = $this->user_is_writer( $user );
+		$is_editor = $this->user_is_editor( $user );
+		$is_admin  = $this->user_is_admin( $user );
+
 		foreach ( array( 'dashboard_activity', 'dashboard_right_now', 'dashboard_site_health' ) as $widget ) {
 			remove_meta_box( $widget, 'dashboard', 'normal' );
 		}
@@ -451,27 +456,27 @@ JS
 			remove_meta_box( $widget, 'dashboard', 'side' );
 		}
 
-		if ( $this->user_is_writer() && current_user_can( 'edit_posts' ) ) {
+		if ( $is_writer && current_user_can( 'edit_posts' ) ) {
 			wp_add_dashboard_widget( 'ew_writer_quick_start', '✦ Start Writing', array( $this, 'render_writer_quick_start_widget' ), null, null, 'normal', 'high' );
 		}
 
-		if ( current_user_can( 'upload_files' ) ) {
+		if ( ( $is_writer || $is_admin ) && current_user_can( 'upload_files' ) ) {
 			wp_add_dashboard_widget( 'ew_media_quick_start', '✦ Media Library', array( $this, 'render_media_quick_start_widget' ), null, null, 'normal', 'core' );
+		}
+
+		if ( ( $is_editor || $is_admin ) && current_user_can( 'edit_others_posts' ) ) {
+			wp_add_dashboard_widget( 'ew_open_content_to_review', '✦ Open Content To Review', array( $this, 'render_open_content_to_review_widget' ), null, null, 'normal', 'high' );
 		}
 
 		if ( current_user_can( 'edit_posts' ) ) {
 			wp_add_dashboard_widget( 'ew_open_change_requests', '✦ Open Change Requests', array( $this, 'render_open_change_requests_widget' ), null, null, 'normal', 'core' );
 		}
 
-		if ( ( $this->user_is_editor() || $this->user_is_admin() ) && current_user_can( 'edit_others_posts' ) ) {
-			wp_add_dashboard_widget( 'ew_open_content_to_review', '✦ Open Content To Review', array( $this, 'render_open_content_to_review_widget' ), null, null, 'normal', 'core' );
-		}
-
 		if ( current_user_can( 'read' ) ) {
-			wp_add_dashboard_widget( 'ew_author_guide', '✦ Author Guide', array( $this, 'render_component_library_widget' ), null, null, 'normal', 'core' );
+			wp_add_dashboard_widget( 'ew_author_guide', '✦ Author Guide', array( $this, 'render_component_library_widget' ), null, null, 'normal', 'low' );
 		}
 
-		wp_add_dashboard_widget( 'ew_editorial_queue', '✦ Editorial Queue', array( $this, 'render_dashboard_widget' ) );
+		wp_add_dashboard_widget( 'ew_editorial_queue', '✦ Editorial Queue', array( $this, 'render_dashboard_widget' ), null, null, 'normal', 'low' );
 	}
 
 	/**
