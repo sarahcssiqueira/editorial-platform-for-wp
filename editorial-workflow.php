@@ -85,6 +85,8 @@ final class Editorial_Workflow {
 
 /**
  * Registers custom post statuses used by the editorial workflow.
+ *
+ * @return void
  */
 public function ew_register_post_statuses() {
 
@@ -113,21 +115,30 @@ public function ew_register_post_statuses() {
  */
 
 /**
- * Returns the role slugs treated as writers (content authors).
+ * Gets the role slugs treated as content authors.
+ *
+ * @return string[]
  */
 public function ew_get_writer_role_slugs() {
     return [ 'author' ];
 }
 
 /**
- * Returns the role slugs treated as editors/reviewers.
+ * Gets the role slugs treated as editors and reviewers.
+ *
+ * @return string[]
  */
 public function ew_get_editor_role_slugs() {
     return [ 'editor', 'administrator' ];
 }
 
 /**
- * Returns true if the given user has at least one of the specified roles.
+ * Determines whether a user has any of the provided role slugs.
+ *
+ * @param WP_User|stdClass|null $user User object to check.
+ * @param string[]              $roles  Role slugs to match against.
+ *
+ * @return bool True if the user has at least one matching role.
  */
 public function ew_user_has_any_role( $user, $roles ) {
     $user_roles = (array) ( $user->roles ?? [] );
@@ -135,7 +146,11 @@ public function ew_user_has_any_role( $user, $roles ) {
 }
 
 /**
- * Returns true if the given user (or current user) is a writer role.
+ * Determines whether a user is a writer-role user.
+ *
+ * @param WP_User|stdClass|null $user User object to inspect. Defaults to the current user.
+ *
+ * @return bool True when the user belongs to a writer role.
  */
 public function ew_user_is_writer( $user = null ) {
     $user = $user ?: wp_get_current_user();
@@ -143,7 +158,9 @@ public function ew_user_is_writer( $user = null ) {
 }
 
 /**
- * Adjusts publish capabilities for writer and editor roles on init.
+ * Adjusts publish capabilities for writer and editor roles during init.
+ *
+ * @return void
  */
 public function ew_set_role_capabilities() {
     foreach ( ew_get_writer_role_slugs() as $writer_role_slug ) {
@@ -166,14 +183,20 @@ public function ew_set_role_capabilities() {
 }
 
 /**
- * Returns true if the current user is an editor or administrator.
+ * Determines whether the current user is an editor or administrator.
+ *
+ * @return bool True if the current user is a reviewer-level user.
  */
 public function ew_user_is_reviewer() {
     return ew_user_has_any_role( wp_get_current_user(), ew_get_editor_role_slugs() );
 }
 
 /**
- * Returns true if the current user is allowed to publish the given post.
+ * Determines whether the current user may publish the supplied post.
+ *
+ * @param int $post_id Post ID to check.
+ *
+ * @return bool True when the current user is allowed to publish the item.
  */
 public function ew_user_can_publish_post( $post_id ) {
     $post = get_post( $post_id );
@@ -186,7 +209,11 @@ public function ew_user_can_publish_post( $post_id ) {
 }
 
 /**
- * Finds the current post ID from capability args or the edit screen request.
+ * Finds the current post ID from capability arguments or the edit request.
+ *
+ * @param array $args Capability arguments or request metadata.
+ *
+ * @return int Post ID if found, otherwise 0.
  */
 public function ew_get_request_post_id( $args = [] ) {
     if ( isset( $args[2] ) && is_numeric( $args[2] ) ) {
@@ -205,7 +232,14 @@ public function ew_get_request_post_id( $args = [] ) {
 }
 
 /**
- * Grants `publish_posts` to an author when their post is approved.
+ * Grants publish capability to authors whose post has been approved.
+ *
+ * @param array    $allcaps Capability map for the current user.
+ * @param string[] $caps    Requested capabilities being checked.
+ * @param array    $args    Capability-check arguments.
+ * @param WP_User  $user    User object being evaluated.
+ *
+ * @return array Updated capability map.
  */
 public function ew_grant_publish_cap_for_approved_posts( $allcaps, $caps, $args, $user ) {
     if ( ! is_admin() ) return $allcaps;
@@ -234,13 +268,12 @@ public function ew_grant_publish_cap_for_approved_posts( $allcaps, $caps, $args,
     return $allcaps;
 }
 
-
 /**
- * 3. Submit for review button (authors).
- */
-
-/**
- * Renders the "Submit for Review" button in the post submit box.
+ * Renders the Submit for Review action in the post submit metabox.
+ *
+ * @param WP_Post $post Post object for the current edit screen.
+ *
+ * @return void
  */
 public function ew_submit_for_review_button( $post ) {
     if ( ! in_array( $post->post_type, [ 'post', 'page' ], true ) ) return;
@@ -268,7 +301,12 @@ public function ew_submit_for_review_button( $post ) {
 }
 
 /**
- * Handles the submit-for-review form action on save_post.
+ * Handles the submit-for-review action when the post is saved.
+ *
+ * @param int     $post_id Post ID being saved.
+ * @param WP_Post $post    Post object being saved.
+ *
+ * @return void
  */
 public function ew_handle_submit_for_review( $post_id, $post ) {
     if ( ! isset( $_POST['ew_submit_for_review'] ) ) return;
@@ -280,7 +318,11 @@ public function ew_handle_submit_for_review( $post_id, $post ) {
 }
 
 /**
- * Sets the post to pending and notifies reviewers.
+ * Moves a post to pending and notifies reviewers.
+ *
+ * @param int $post_id Post ID to submit.
+ *
+ * @return bool|WP_Error True on success, or WP_Error when resubmission is blocked.
  */
 public function ew_process_submit_for_review( $post_id ) {
     if ( get_post_status( $post_id ) === 'changes_requested' && ! ew_post_is_ready_for_resubmission( $post_id ) ) {
@@ -297,7 +339,13 @@ public function ew_process_submit_for_review( $post_id ) {
 }
 
 /**
- * Notifies editors when a post transitions to pending (outside the submit form flow).
+ * Notifies editors when a post transitions to pending outside the direct review flow.
+ *
+ * @param string  $new_status New post status.
+ * @param string  $old_status Old post status.
+ * @param WP_Post $post       Post object being transitioned.
+ *
+ * @return void
  */
 public function ew_notify_editors_when_pending( $new_status, $old_status, $post ) {
     if ( $new_status !== 'pending' || $old_status === 'pending' ) return;
@@ -313,11 +361,11 @@ public function ew_notify_editors_when_pending( $new_status, $old_status, $post 
 
 
 /**
- * 4. Notifications.
- */
-
-/**
  * Emails all editors and pings Slack when a post is submitted for review.
+ *
+ * @param int $post_id Post ID to notify about.
+ *
+ * @return void
  */
 public function ew_notify_editors_review_requested( $post_id ) {
     $post     = get_post( $post_id );
@@ -342,6 +390,11 @@ public function ew_notify_editors_review_requested( $post_id ) {
 
 /**
  * Emails the post author when an editor requests changes.
+ *
+ * @param int    $post_id Post ID associated with the request.
+ * @param string $note    Review note describing requested changes.
+ *
+ * @return void
  */
 public function ew_notify_author_changes_requested( $post_id, $note ) {
     $post     = get_post( $post_id );
@@ -359,7 +412,11 @@ public function ew_notify_author_changes_requested( $post_id, $note ) {
 }
 
 /**
- * Sends a message to the configured Slack webhook.
+ * Sends a notification message to the configured Slack webhook.
+ *
+ * @param string $message Message to send.
+ *
+ * @return void
  */
 public function ew_slack_notify( $message ) {
     if ( ! defined( 'EDITORIAL_SLACK_WEBHOOK' ) ) return;
@@ -389,11 +446,9 @@ public function ew_slack_notify( $message ) {
 
 
 /**
- * 5. Editor review panel.
- */
-
-/**
  * Outputs the admin CSS for the change-request UI on post edit screens.
+ *
+ * @return void
  */
 public function ew_output_change_request_styles() {
     global $post;
@@ -434,6 +489,8 @@ public function ew_output_change_request_styles() {
 
 /**
  * Registers the Editorial Workflow meta box on post and page edit screens.
+ *
+ * @return void
  */
 public function ew_add_feedback_metabox() {
     global $post;
@@ -444,7 +501,11 @@ public function ew_add_feedback_metabox() {
 }
 
 /**
- * Renders the full editorial feedback meta box.
+ * Renders the editorial feedback meta box for the current post.
+ *
+ * @param WP_Post $post Post object being edited.
+ *
+ * @return void
  */
 public function ew_render_feedback_metabox( $post ) {
     $comments = get_comments( [
@@ -669,6 +730,11 @@ public function ew_render_feedback_metabox( $post ) {
 
 /**
  * Prevents non-reviewers from bypassing the approval gate when saving.
+ *
+ * @param array $data    Post data array before insert/update.
+ * @param array $postarr Raw post array from the save request.
+ *
+ * @return array Filtered post data.
  */
 public function ew_intercept_editor_publish( $data, $postarr ) {
     if ( ! is_admin() ) return $data;
@@ -718,7 +784,12 @@ public function ew_intercept_editor_publish( $data, $postarr ) {
 }
 
 /**
- * Handles the approve / request-changes form action on save_post.
+ * Handles the approve/request-change action on save_post.
+ *
+ * @param int     $post_id Post ID being saved.
+ * @param WP_Post $post    Post object being saved.
+ *
+ * @return void
  */
 public function ew_handle_review_action( $post_id, $post ) {
     if ( ! isset( $_POST['ew_action'] ) ) return;
@@ -734,7 +805,13 @@ public function ew_handle_review_action( $post_id, $post ) {
 }
 
 /**
- * Applies an approve or request_changes decision to the post.
+ * Applies an approval or revision request to the post.
+ *
+ * @param int    $post_id Post ID to update.
+ * @param string $action  Action to apply: approve or request_changes.
+ * @param string $note    Reviewer note for revision requests.
+ *
+ * @return bool|WP_Error True on success, or WP_Error when validation fails.
  */
 public function ew_process_review_action( $post_id, $action, $note ) {
     remove_action( 'save_post', array( $this, 'ew_handle_review_action' ), 10 );
@@ -766,6 +843,12 @@ public function ew_process_review_action( $post_id, $action, $note ) {
 
 /**
  * Stores a change-request comment for the post and attaches item metadata.
+ *
+ * @param int    $post_id Post ID to attach the comment to.
+ * @param string $note    Review summary and requested-change text.
+ * @param array  $items   Optional checklist items for the request.
+ *
+ * @return int|false Comment ID on success, otherwise false.
  */
 public function ew_add_change_request_comment( $post_id, $note, $items = [] ) {
     $user = wp_get_current_user();
@@ -791,6 +874,10 @@ public function ew_add_change_request_comment( $post_id, $note, $items = [] ) {
 
 /**
  * Splits a freeform change-request note into individual checklist items.
+ *
+ * @param string $note Review note text to parse.
+ *
+ * @return array<int, array<string, string>> Parsed checklist items.
  */
 public function ew_parse_change_request_items( $note ) {
     $lines = preg_split( '/\r\n|\r|\n/', (string) $note );
@@ -814,6 +901,10 @@ public function ew_parse_change_request_items( $note ) {
 
 /**
  * Sanitizes and normalizes a single change-request item array.
+ *
+ * @param array $item Change-request item array to normalize.
+ *
+ * @return array|null Normalized item array, or null when the item is invalid.
  */
 public function ew_normalize_change_request_item( $item ) {
     if ( ! is_array( $item ) ) return null;
@@ -832,7 +923,11 @@ public function ew_normalize_change_request_item( $item ) {
 }
 
 /**
- * Returns the normalized items for a given change-request comment.
+ * Returns the normalized items stored for a given change-request comment.
+ *
+ * @param int|WP_Comment $comment Comment ID or WP_Comment object.
+ *
+ * @return array<int, array<string, mixed>> Normalized checklist items.
  */
 public function ew_get_change_request_items( $comment ) {
     $comment_obj = $comment instanceof WP_Comment ? $comment : get_comment( $comment );
@@ -851,6 +946,11 @@ public function ew_get_change_request_items( $comment ) {
 
 /**
  * Persists updated item data on a change-request comment.
+ *
+ * @param int   $comment_id Comment ID to update.
+ * @param array $items      Checklist items to store.
+ *
+ * @return void
  */
 public function ew_update_change_request_items( $comment_id, $items ) {
     update_comment_meta( $comment_id, '_ew_items', array_values( $items ) );
@@ -858,6 +958,10 @@ public function ew_update_change_request_items( $comment_id, $items ) {
 
 /**
  * Returns the active change-request items stored in post meta.
+ *
+ * @param int $post_id Post ID to inspect.
+ *
+ * @return array<int, array<string, mixed>> Active checklist items.
  */
 public function ew_get_active_change_request_items_meta( $post_id ) {
     $items = get_post_meta( $post_id, '_ew_active_change_items', true );
@@ -868,14 +972,23 @@ public function ew_get_active_change_request_items_meta( $post_id ) {
 }
 
 /**
- * Saves updated active change-request items to post meta.
+ * Saves the active change-request items to post meta.
+ *
+ * @param int   $post_id Post ID to update.
+ * @param array $items   Checklist items to persist.
+ *
+ * @return void
  */
 public function ew_update_active_change_request_items_meta( $post_id, $items ) {
     update_post_meta( $post_id, '_ew_active_change_items', array_values( $items ) );
 }
 
 /**
- * Returns true when every item in a change-request list is marked done.
+ * Checks whether every checklist item in the collection is marked done.
+ *
+ * @param array $items Checklist items to evaluate.
+ *
+ * @return bool True when all items are complete.
  */
 public function ew_change_request_items_are_complete( $items ) {
     if ( empty( $items ) ) return false;
@@ -891,6 +1004,10 @@ public function ew_change_request_items_are_complete( $items ) {
 
 /**
  * Returns the tracked active change-request comment for the post, or null.
+ *
+ * @param int $post_id Post ID to inspect.
+ *
+ * @return WP_Comment|null Active change request comment or null.
  */
 public function ew_get_tracked_change_request_comment( $post_id ) {
     $active_comment_id = absint( get_post_meta( $post_id, '_ew_active_change_request_id', true ) );
@@ -906,6 +1023,10 @@ public function ew_get_tracked_change_request_comment( $post_id ) {
 
 /**
  * Returns true when all outstanding change items are done and the post can be resubmitted.
+ *
+ * @param int $post_id Post ID to inspect.
+ *
+ * @return bool True if the request is ready for resubmission.
  */
 public function ew_post_is_ready_for_resubmission( $post_id ) {
     $items = ew_get_active_change_request_items_meta( $post_id );
@@ -992,7 +1113,11 @@ public function ew_recover_active_change_request_comment( $post_id ) {
 }
 
 /**
- * Returns the currently active (unresolved) change-request comment for the post.
+ * Returns the currently active unresolved change-request comment for the post.
+ *
+ * @param int $post_id Post ID to inspect.
+ *
+ * @return WP_Comment|null Active change-request comment or null.
  */
 public function ew_get_active_change_request_comment( $post_id ) {
     $active_comment = ew_get_tracked_change_request_comment( $post_id );
@@ -1038,7 +1163,11 @@ public function ew_get_active_change_request_comment( $post_id ) {
 }
 
 /**
- * Returns true if the current user can mark change-request items as done.
+ * Determines whether the current user may mark change-request items as done.
+ *
+ * @param WP_Post $post Post object to inspect.
+ *
+ * @return bool True when the user is allowed to resolve the request.
  */
 public function ew_current_user_can_resolve_change_requests( $post ) {
     $user_id = get_current_user_id();
@@ -1050,6 +1179,11 @@ public function ew_current_user_can_resolve_change_requests( $post ) {
 
 /**
  * Handles the mark-done form submission on save_post.
+ *
+ * @param int     $post_id Post ID being saved.
+ * @param WP_Post $post    Post object being saved.
+ *
+ * @return void
  */
 public function ew_handle_change_resolution( $post_id, $post ) {
     if ( ! isset( $_POST['ew_update_changes'] ) ) return;
@@ -1065,7 +1199,13 @@ public function ew_handle_change_resolution( $post_id, $post ) {
 }
 
 /**
- * Marks the selected change-request items as done and resubmits if all are complete.
+ * Marks the selected change-request items as done and resubmits when complete.
+ *
+ * @param int   $post_id            Post ID to update.
+ * @param int   $submitted_request_id Requested comment ID submitted with the form.
+ * @param array $completed_ids      Selected item IDs marked as resolved.
+ *
+ * @return bool|WP_Error True on success, or WP_Error when validation fails.
  */
 public function ew_process_change_resolution( $post_id, $submitted_request_id, $completed_ids ) {
     $active_request = ew_get_active_change_request_comment( $post_id );
@@ -1112,6 +1252,8 @@ public function ew_process_change_resolution( $post_id, $submitted_request_id, $
 
 /**
  * AJAX handler for authors submitting a post for review.
+ *
+ * @return void
  */
 public function ew_ajax_submit_for_review() {
     $post_id = absint( $_POST['post_id'] ?? 0 );
@@ -1137,6 +1279,8 @@ public function ew_ajax_submit_for_review() {
 
 /**
  * AJAX handler for editors approving or requesting changes on a post.
+ *
+ * @return void
  */
 public function ew_ajax_review_action() {
     $post_id = absint( $_POST['post_id'] ?? 0 );
@@ -1165,6 +1309,8 @@ public function ew_ajax_review_action() {
 
 /**
  * AJAX handler for authors marking change-request items as done.
+ *
+ * @return void
  */
 public function ew_ajax_update_changes() {
     $post_id               = absint( $_POST['post_id'] ?? 0 );
@@ -1194,6 +1340,10 @@ public function ew_ajax_update_changes() {
 
 /**
  * Returns the most recent change-request note for the post.
+ *
+ * @param int $post_id Post ID to inspect.
+ *
+ * @return string Change-request note text, or stored meta value if no comment exists.
  */
 public function ew_get_latest_change_request_note( $post_id ) {
     $comments = get_comments( [

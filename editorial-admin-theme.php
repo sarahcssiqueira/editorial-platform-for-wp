@@ -31,7 +31,7 @@ final class Editorial_Admin_Theme {
 	private const THEME_PREFERENCE_META_KEY = 'eat_theme_preference';
 
 	/**
-	 * Bootstraps the plugin.
+	 * Bootstraps the plugin instance and registers its hooks.
 	 *
 	 * @return void
 	 */
@@ -144,7 +144,7 @@ final class Editorial_Admin_Theme {
 	}
 
 	/**
-	 * Enqueues core admin theme assets and dashboard theme toggle behavior.
+	 * Enqueues the admin theme stylesheet and inline dashboard theme toggle behavior.
 	 *
 	 * @param string $hook Current admin screen hook suffix.
 	 *
@@ -239,7 +239,7 @@ JS
 	}
 
 	/**
-	 * Removes non-essential admin menu pages based on role.
+	 * Removes non-essential admin menu pages based on the current user's role.
 	 *
 	 * @return void
 	 */
@@ -260,11 +260,11 @@ JS
 	}
 
 	/**
-	 * Adds role and theme classes to admin body.
+	 * Adds role- and theme-specific classes to the admin body.
 	 *
-	 * @param string $classes Existing classes.
+	 * @param string $classes Existing body classes.
 	 *
-	 * @return string
+	 * @return string Updated body classes string.
 	 */
 	public function body_class( $classes ) {
 		$user = wp_get_current_user();
@@ -283,7 +283,7 @@ JS
 	}
 
 	/**
-	 * Persists dashboard theme preference for the current user.
+	 * Persists the current user's dashboard theme preference through AJAX.
 	 *
 	 * @return void
 	 */
@@ -304,7 +304,7 @@ JS
 	}
 
 	/**
-	 * Forces the left admin menu to remain expanded.
+	 * Forces the admin menu to remain expanded on dashboard and editor screens.
 	 *
 	 * @return void
 	 */
@@ -330,7 +330,7 @@ JS
 	}
 
 	/**
-	 * Renders a custom dashboard greeting and quick theme toggle.
+	 * Renders the dashboard welcome banner and theme toggle control.
 	 *
 	 * @return void
 	 */
@@ -366,7 +366,7 @@ JS
 	}
 
 	/**
-	 * Customizes admin bar nodes by role and injects review queue badge.
+	 * Customizes admin bar nodes by role and adds the review queue badge.
 	 *
 	 * @param WP_Admin_Bar $wp_admin_bar Admin bar instance.
 	 *
@@ -403,7 +403,7 @@ JS
 	}
 
 	/**
-	 * Outputs custom login page styling.
+	 * Outputs the custom login page styling for the editorial admin experience.
 	 *
 	 * @return void
 	 */
@@ -423,7 +423,7 @@ JS
 	}
 
 	/**
-	 * Configures dashboard widgets for editorial workflows.
+	 * Configures the dashboard widgets used by the editorial workflow admin experience.
 	 *
 	 * @return void
 	 */
@@ -457,7 +457,7 @@ JS
 	}
 
 	/**
-	 * Renders the editorial queue dashboard widget.
+	 * Renders the editorial queue dashboard widget with pending review items.
 	 *
 	 * @return void
 	 */
@@ -509,7 +509,7 @@ JS
 	}
 
 	/**
-	 * Renders dashboard notification pills and recent updates list.
+	 * Renders dashboard notification pills and recent editorial updates.
 	 *
 	 * @return void
 	 */
@@ -569,7 +569,7 @@ JS
 	}
 
 	/**
-	 * Renders a quick-start card for writers.
+	 * Renders the quick-start widget shown to authors on the dashboard.
 	 *
 	 * @return void
 	 */
@@ -584,7 +584,7 @@ JS
 	}
 
 	/**
-	 * Renders media library quick actions.
+	 * Renders the media quick actions widget for editorial users.
 	 *
 	 * @return void
 	 */
@@ -630,7 +630,7 @@ JS
 	}
 
 	/**
-	 * Renders open change requests widget.
+	 * Renders the open change requests widget for the current user.
 	 *
 	 * @return void
 	 */
@@ -674,7 +674,7 @@ JS
 	}
 
 	/**
-	 * Renders the author guide/component library links widget.
+	 * Renders the author guide and component library resource links.
 	 *
 	 * @return void
 	 */
@@ -714,7 +714,7 @@ JS
 	}
 
 	/**
-	 * Adds an inline split preview panel on post edit screens.
+	 * Enqueues the inline split-preview panel on supported post edit screens.
 	 *
 	 * @param string $hook Current admin screen hook suffix.
 	 *
