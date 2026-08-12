@@ -234,7 +234,7 @@ body.wp-admin {
     transition: background var(--e-trans), color var(--e-trans) !important;
     display: flex !important;
     align-items: center !important;
-    gap: 7px !important;
+    gap: 4px !important;
     line-height: 1.4 !important;
     box-shadow: none !important;
 }
@@ -277,6 +277,13 @@ body.wp-admin {
     min-width: 16px !important;
     float: none !important;
     margin: 0 !important;
+    padding: 0 !important;
+}
+
+#adminmenu .wp-menu-name {
+    width: auto !important;
+    padding: 0 !important;
+    overflow: visible !important;
 }
 
 #adminmenu .wp-menu-image::before,
@@ -301,7 +308,49 @@ body.wp-admin {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
-    padding: 2px 0 4px 22px !important;
+    /* indent aligns text under the label: icon(16) + gap(7) + link-pad(8) */
+    padding: 2px 0 4px 31px !important;
+}
+
+/* inline expanded submenu item reset */
+#adminmenu li.wp-menu-open > .wp-submenu {
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
+    /* indent = a-pad(8) + icon(16) + gap(4) */
+    padding: 2px 0 4px 28px !important;
+}
+
+#adminmenu li.wp-menu-open > .wp-submenu li {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+#adminmenu li.wp-menu-open > .wp-submenu a {
+    display: block !important;
+    position: static !important;
+}
+
+/* floating flyout on hover */
+#adminmenu li.menu-top:not(.wp-menu-open) > .wp-submenu,
+#adminmenu li.menu-top > .wp-submenu.sub-open {
+    background: var(--e-surface-1) !important;
+    border: 1px solid var(--e-border-1) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,.10) !important;
+    border-radius: var(--e-radius) !important;
+    padding: 6px !important;
+    left: var(--e-sidebar-w) !important;
+}
+
+#adminmenu li.menu-top:not(.wp-menu-open) > .wp-submenu a,
+#adminmenu li.menu-top > .wp-submenu.sub-open a {
+    color: var(--e-text-1) !important;
+}
+
+#adminmenu li.menu-top:not(.wp-menu-open) > .wp-submenu a:hover,
+#adminmenu li.menu-top > .wp-submenu.sub-open a:hover {
+    color: var(--e-text-0) !important;
+    background: var(--e-surface-2) !important;
 }
 
 #adminmenu .wp-submenu a {
