@@ -463,6 +463,10 @@ JS
 			wp_add_dashboard_widget( 'ew_open_change_requests', '✦ Open Change Requests', array( $this, 'render_open_change_requests_widget' ), null, null, 'normal', 'core' );
 		}
 
+		if ( ( $this->user_is_editor() || $this->user_is_admin() ) && current_user_can( 'edit_others_posts' ) ) {
+			wp_add_dashboard_widget( 'ew_open_content_to_review', '✦ Open Content To Review', array( $this, 'render_open_content_to_review_widget' ), null, null, 'normal', 'core' );
+		}
+
 		if ( current_user_can( 'read' ) ) {
 			wp_add_dashboard_widget( 'ew_author_guide', '✦ Author Guide', array( $this, 'render_component_library_widget' ), null, null, 'normal', 'core' );
 		}
@@ -682,6 +686,45 @@ JS
 					<?php endforeach; ?>
 				</ul>
 				<a class="eat-open-requests-link" href="<?php echo esc_url( $changes_requested_url ); ?>">View all open requests</a>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Renders the open content to review widget for editors.
+	 *
+	 * @return void
+	 */
+	public function render_open_content_to_review_widget() {
+		$pending_posts = get_posts(
+			array(
+				'post_type'      => 'post',
+				'post_status'    => 'pending',
+				'posts_per_page' => 6,
+				'orderby'        => 'modified',
+				'order'          => 'DESC',
+			)
+		);
+		$pending_posts_url = admin_url( 'edit.php?post_status=pending&post_type=post' );
+		?>
+		<div class="eat-open-requests-panel eat-open-content-review-panel">
+			<?php if ( empty( $pending_posts ) ) : ?>
+				<p class="eat-open-requests-empty">No open content to review right now.</p>
+			<?php else : ?>
+				<div class="eat-open-requests-summary">
+					<strong><?php echo esc_html( (string) count( $pending_posts ) ); ?></strong>
+					<span><?php echo esc_html( 1 === count( $pending_posts ) ? 'post is waiting for review' : 'posts are waiting for review' ); ?></span>
+				</div>
+				<ul class="eat-open-requests-list">
+					<?php foreach ( $pending_posts as $post ) : ?>
+						<li class="eat-open-requests-item">
+							<a href="<?php echo esc_url( admin_url( 'post.php?post=' . $post->ID . '&action=edit' ) ); ?>"><?php echo esc_html( $post->post_title ?: '(Untitled)' ); ?></a>
+							<span><?php echo esc_html( human_time_diff( strtotime( $post->post_modified ) ) ); ?> ago</span>
+						</li>
+					<?php endforeach; ?>
+				</ul>
+				<a class="eat-open-requests-link" href="<?php echo esc_url( $pending_posts_url ); ?>">View all content to review</a>
 			<?php endif; ?>
 		</div>
 		<?php
