@@ -153,11 +153,18 @@ body.wp-admin {
 }
 
 /* ─── SIDEBAR ───────────────────────────────────────────────────────────────── */
+html,
+#wpwrap {
+    background: var(--e-bg) !important;
+}
+
 #adminmenuback,
 #adminmenuwrap {
-    background: #ffffff !important;
+    background: var(--e-surface-1) !important;
     border-right: 1px solid var(--e-border-0) !important;
     width: var(--e-sidebar-w) !important;
+    top: 10px !important;
+    margin-top: 1px !important;
 }
 
 /* Keep main admin layout aligned with custom sidebar width */
