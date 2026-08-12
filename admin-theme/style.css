@@ -189,8 +189,10 @@ body.wp-admin {
 .folded #adminmenu .wp-menu-name,
 .auto-fold #adminmenu .wp-menu-name,
 .folded #adminmenu .update-plugins,
-.auto-fold #adminmenu .update-plugins {
-    display: block !important;
+.auto-fold #adminmenu .update-plugins,
+.folded #adminmenu .awaiting-mod,
+.auto-fold #adminmenu .awaiting-mod {
+    display: inline-flex !important;
 }
 
 .folded #adminmenu .wp-submenu {
@@ -249,6 +251,25 @@ body.wp-admin {
     color: var(--e-accent) !important;
     font-weight: 500 !important;
     box-shadow: none !important;
+}
+
+/* update count bubbles */
+#adminmenu .update-plugins,
+#adminmenu .awaiting-mod {
+    position: static !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin-left: 6px !important;
+    min-width: 18px !important;
+    height: 18px !important;
+    padding: 0 5px !important;
+    border-radius: 9px !important;
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
+    background: var(--e-accent) !important;
+    color: #fff !important;
 }
 
 #adminmenu .wp-menu-image {
