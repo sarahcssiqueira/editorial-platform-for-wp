@@ -88,8 +88,8 @@ body.wp-admin {
 /* ─── ADMIN BAR ─────────────────────────────────────────────────────────────── */
 #wpadminbar {
     background: var(--e-surface-1) !important;
-    border-bottom: 1px solid var(--e-border-0) !important;
-    box-shadow: 0 1px 0 var(--e-border-0) !important;
+    border-bottom: 1px solid var(--e-border-1) !important;
+    box-shadow: 0 1px 3px var(--e-border-1) !important;
     height: 36px !important;
 }
 
@@ -110,6 +110,19 @@ body.wp-admin {
 #wpadminbar a.ab-item:hover {
     color: var(--e-text-0) !important;
     background: transparent !important;
+}
+
+#wpadminbar #wp-admin-bar-wp-logo .ab-icon,
+#wpadminbar #wp-admin-bar-wp-logo .ab-icon::before,
+#wpadminbar #wp-admin-bar-site-name .ab-item::before,
+#wpadminbar #wp-admin-bar-home .ab-icon,
+#wpadminbar #wp-admin-bar-home .ab-icon::before {
+    color: var(--e-text-1) !important;
+}
+
+#wpadminbar #wp-admin-bar-wp-logo > .ab-item svg *,
+#wpadminbar #wp-admin-bar-wp-logo > .ab-item .ab-icon svg * {
+    fill: var(--e-text-1) !important;
 }
 
 #wpadminbar #wp-admin-bar-site-name > .ab-item {
@@ -160,11 +173,11 @@ html,
 
 #adminmenuback,
 #adminmenuwrap {
-    background: var(--e-surface-1) !important;
-    border-right: 1px solid var(--e-border-0) !important;
+    background: var(--e-surface-2) !important;
+    border-right: 1px solid var(--e-border-1) !important;
     width: var(--e-sidebar-w) !important;
     top: 10px !important;
-    margin-top: 1px !important;
+    margin-top: 3px !important;
 }
 
 /* Keep main admin layout aligned with custom sidebar width */
@@ -726,7 +739,21 @@ html,
     accent-color: var(--e-accent);
     width: 14px;
     height: 14px;
+    margin: 0 !important;
+    vertical-align: middle !important;
     border-radius: 3px;
+}
+
+.wp-list-table .check-column {
+    width: 2em !important;
+    padding: 8px 12px 8px 14px !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+}
+
+.wp-list-table tbody .check-column {
+    vertical-align: middle !important;
+    padding-top: 8px !important;
 }
 
 /* ─── SEARCH BOX ────────────────────────────────────────────────────────────── */
