@@ -1,12 +1,7 @@
 <?php
 /**
- * Plugin Name:       Editorial Admin Theme
- * Plugin URI:        https://github.com/your-repo/editorial-workflow
- * Description:       Role-aware admin interface for editorial teams: clean menus for authors, review queue for editors, dark editorial skin.
- * Version:           1.0.0
- * Author:            Sarah
- * License:           GPL-2.0-or-later
- * Text Domain:       editorial
+ * Shared admin-theme functionality for the editorial workflow plugin.
+ * This file is intentionally not a WordPress plugin entry point.
  */
 
 defined( 'ABSPATH' ) || exit;

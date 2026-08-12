@@ -12,6 +12,47 @@
 defined( 'ABSPATH' ) || exit;
 
 /**
+ * Bootstraps the plugin and keeps feature files organized by responsibility.
+ */
+final class Editorial_Plugin_Bootstrap {
+
+    /**
+     * Singleton instance.
+     *
+     * @var Editorial_Plugin_Bootstrap|null
+     */
+    private static $instance = null;
+
+    /**
+     * Returns the singleton instance.
+     *
+     * @return Editorial_Plugin_Bootstrap
+     */
+    public static function instance() {
+        if ( null === self::$instance ) {
+            self::$instance = new self();
+        }
+
+        return self::$instance;
+    }
+
+    /**
+     * Loads supporting files and initializes the plugin classes.
+     *
+     * @return void
+     */
+    public function boot() {
+        require_once __DIR__ . '/editorial-admin-theme.php';
+
+        if ( class_exists( 'Editorial_Admin_Theme' ) ) {
+            Editorial_Admin_Theme::init();
+        }
+
+        Editorial_Workflow::instance();
+    }
+}
+
+/**
  * Handles editorial workflow features.
  */
 final class Editorial_Workflow {
@@ -1768,7 +1809,7 @@ public function ew_status_label( $status ) {
 }
 }
 
-Editorial_Workflow::instance();
+Editorial_Plugin_Bootstrap::instance()->boot();
 
 if ( ! function_exists( 'ew_register_post_statuses' ) ) { function ew_register_post_statuses( ...$args ) { return Editorial_Workflow::instance()->ew_register_post_statuses( ...$args ); } }
 if ( ! function_exists( 'ew_get_writer_role_slugs' ) ) { function ew_get_writer_role_slugs( ...$args ) { return Editorial_Workflow::instance()->ew_get_writer_role_slugs( ...$args ); } }
