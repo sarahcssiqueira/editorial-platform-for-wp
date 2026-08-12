@@ -468,7 +468,6 @@ JS
 		}
 
 		wp_add_dashboard_widget( 'ew_editorial_queue', '✦ Editorial Queue', array( $this, 'render_dashboard_widget' ) );
-		wp_add_dashboard_widget( 'ew_editorial_notifications', '✦ Editorial Notifications', array( $this, 'render_notifications_widget' ), null, null, 'side', 'high' );
 	}
 
 	/**
@@ -706,7 +705,7 @@ JS
 				'url'         => home_url( '/docs/page-templates/' ),
 			),
 			array(
-				'title'       => 'Storybook',
+				'title'       => 'Components Library',
 				'description' => 'Placeholder for the shared UI component catalog and usage patterns.',
 				'url'         => home_url( '/docs/storybook/' ),
 			),
