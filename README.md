@@ -104,7 +104,7 @@ Author drafts post
 - Authors can mark checklist items as done as they complete revisions.
 - Resubmission is gated until all checklist items are done.
 - Once resubmitted, the post returns to `pending` for editor review.
-- Notifications are sent by email (and optionally Slack) when review is requested or changes are requested.
+- Notifications are sent by email (and optionally Slack) when review is requested, a post is approved, or changes are requested. Published posts are announced in Slack.
 
 ---
 

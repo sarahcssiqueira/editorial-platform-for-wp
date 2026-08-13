@@ -269,6 +269,11 @@ public function ew_get_request_post_id( $args = [] ) {
         return (int) $_GET['post'];
     }
 
+    $request_uri = $_SERVER['REQUEST_URI'] ?? '';
+    if ( preg_match( '#/wp/v2/(?:posts|pages)/(\d+)(?:/|\?|$)#', $request_uri, $matches ) ) {
+        return (int) $matches[1];
+    }
+
     return 0;
 }
 
@@ -283,7 +288,7 @@ public function ew_get_request_post_id( $args = [] ) {
  * @return array Updated capability map.
  */
 public function ew_grant_publish_cap_for_approved_posts( $allcaps, $caps, $args, $user ) {
-    if ( ! is_admin() ) return $allcaps;
+    if ( ! is_admin() && ! ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) return $allcaps;
     if ( ! isset( $user->ID ) || ! $user->ID ) return $allcaps;
     if ( ew_user_is_reviewer() ) return $allcaps;
     if ( ! empty( $allcaps['publish_posts'] ) ) return $allcaps;
@@ -410,7 +415,10 @@ public function ew_notify_editors_when_pending( $new_status, $old_status, $post 
  */
 public function ew_notify_editors_review_requested( $post_id ) {
     $post     = get_post( $post_id );
+    if ( ! $post ) return;
+
     $author   = get_userdata( $post->post_author );
+    $author_name = $author ? $author->display_name : __( 'An author', 'editorial' );
     $edit_url = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
     $preview  = ew_get_public_preview_url( $post_id );
     $reviewers = get_users( [
@@ -419,14 +427,45 @@ public function ew_notify_editors_review_requested( $post_id ) {
     ] );
     $to = array_values( array_unique( array_filter( array_map( fn( $u ) => $u->user_email, $reviewers ) ) ) );
 
-    if ( empty( $to ) ) return;
+    if ( ! empty( $to ) ) {
+        ew_send_email_notification(
+            $to,
+            sprintf( '[Review Needed] %s', $post->post_title ),
+            sprintf( "Hi,\n\n%s submitted \"%s\" for review.\n\nPreview: %s\nEdit: %s\n\nLog in to approve or send it back for revision.",
+                $author_name, $post->post_title, $preview, $edit_url )
+        );
+    }
 
-    wp_mail( $to,
-        sprintf( '[Review Needed] %s', $post->post_title ),
-        sprintf( "Hi,\n\n%s submitted \"%s\" for review.\n\nPreview: %s\nEdit: %s\n\nLog in to approve or send it back for revision.",
-            $author->display_name, $post->post_title, $preview, $edit_url )
-    );
-    ew_slack_notify( sprintf( '✦ *Review needed:* <%s|%s> by %s — <%s|Preview>', $edit_url, $post->post_title, $author->display_name, $preview ) );
+    ew_slack_notify( sprintf( '✦ *Review needed:* <%s|%s> by %s — <%s|Preview>', $edit_url, $post->post_title, $author_name, $preview ) );
+}
+
+/**
+ * Notifies the post author when an editor approves a post.
+ *
+ * @param int $post_id Post ID that was approved.
+ *
+ * @return void
+ */
+public function ew_notify_author_approved( $post_id ) {
+    $post   = get_post( $post_id );
+    $author = $post ? get_userdata( $post->post_author ) : false;
+    if ( ! $post ) return;
+
+    $editor      = wp_get_current_user();
+    $edit_url    = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
+    $preview     = ew_get_public_preview_url( $post_id );
+    $author_name = $author ? $author->display_name : __( 'the author', 'editorial' );
+    $editor_name = $editor && $editor->exists() ? $editor->display_name : __( 'An editor', 'editorial' );
+
+    if ( $author && ! empty( $author->user_email ) ) {
+        ew_send_email_notification(
+            $author->user_email,
+            sprintf( '[Approved] %s', $post->post_title ),
+            sprintf( "Hi %s,\n\n%s approved \"%s\". You can now publish it.\n\nPreview: %s\nEdit: %s",
+                $author_name, $editor_name, $post->post_title, $preview, $edit_url )
+        );
+    }
+    ew_slack_notify( sprintf( '✓ *Approved:* <%s|%s> for %s by %s', $edit_url, $post->post_title, $author_name, $editor_name ) );
 }
 
 /**
@@ -439,17 +478,42 @@ public function ew_notify_editors_review_requested( $post_id ) {
  */
 public function ew_notify_author_changes_requested( $post_id, $note ) {
     $post     = get_post( $post_id );
+    if ( ! $post ) return;
+
     $author   = get_userdata( $post->post_author );
     $editor   = wp_get_current_user();
     $edit_url = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
     $preview  = ew_get_public_preview_url( $post_id );
+    $author_name = $author ? $author->display_name : __( 'the author', 'editorial' );
 
-    wp_mail( $author->user_email,
-        sprintf( '[Changes Requested] %s', $post->post_title ),
-        sprintf( "Hi %s,\n\n%s reviewed \"%s\" and requested changes:\n\n—\n%s\n—\n\nPreview: %s\nEdit: %s",
-            $author->display_name, $editor->display_name, $post->post_title, $note, $preview, $edit_url )
-    );
-    ew_slack_notify( sprintf( '↩ *Changes requested:* <%s|%s> by %s', $edit_url, $post->post_title, $editor->display_name ) );
+    if ( $author && ! empty( $author->user_email ) ) {
+        ew_send_email_notification(
+            $author->user_email,
+            sprintf( '[Changes Requested] %s', $post->post_title ),
+            sprintf( "Hi %s,\n\n%s reviewed \"%s\" and requested changes:\n\n—\n%s\n—\n\nPreview: %s\nEdit: %s",
+                $author_name, $editor->display_name, $post->post_title, $note, $preview, $edit_url )
+        );
+    }
+    ew_slack_notify( sprintf( '↩ *Changes requested:* <%s|%s> by %s\n> %s', $edit_url, $post->post_title, $editor->display_name, $note ) );
+}
+
+/**
+ * Sends an editorial email and logs failures when WordPress debugging is enabled.
+ *
+ * @param string|array $to      Recipient address or addresses.
+ * @param string       $subject Email subject.
+ * @param string       $message Plain-text email body.
+ *
+ * @return bool Whether WordPress accepted the email for delivery.
+ */
+public function ew_send_email_notification( $to, $subject, $message ) {
+    $sent = wp_mail( $to, $subject, $message );
+
+    if ( ! $sent && defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+        error_log( 'Editorial email notification failed: ' . $subject );
+    }
+
+    return (bool) $sent;
 }
 
 /**
@@ -860,6 +924,7 @@ public function ew_process_review_action( $post_id, $action, $note ) {
         wp_update_post( [ 'ID' => $post_id, 'post_status' => 'approved' ] );
         update_post_meta( $post_id, '_ew_approved_by', get_current_user_id() );
         update_post_meta( $post_id, '_ew_approved_at', current_time( 'mysql' ) );
+        ew_notify_author_approved( $post_id );
     } elseif ( $action === 'request_changes' ) {
         $items = ew_parse_change_request_items( $note );
 
@@ -1576,7 +1641,7 @@ public function ew_clear_cache_on_publish( $new_status, $old_status, $post ) {
     if ( class_exists( 'LiteSpeed_Cache_API' ) )       LiteSpeed_Cache_API::purge( 'esi.post.' . $post->ID );
 
     delete_transient( 'ew_preview_' . $post->ID );
-    ew_slack_notify( sprintf( '🟢 *Published:* <%s|%s>', get_permalink( $post->ID ), $post->post_title ) );
+    ew_slack_notify( sprintf( '🟢 *Published:* <%s|%s> by %s', get_permalink( $post->ID ), $post->post_title, get_the_author_meta( 'display_name', $post->post_author ) ) );
 }
 
 
@@ -1827,6 +1892,8 @@ if ( ! function_exists( 'ew_process_submit_for_review' ) ) { function ew_process
 if ( ! function_exists( 'ew_notify_editors_when_pending' ) ) { function ew_notify_editors_when_pending( ...$args ) { return Editorial_Workflow::instance()->ew_notify_editors_when_pending( ...$args ); } }
 if ( ! function_exists( 'ew_notify_editors_review_requested' ) ) { function ew_notify_editors_review_requested( ...$args ) { return Editorial_Workflow::instance()->ew_notify_editors_review_requested( ...$args ); } }
 if ( ! function_exists( 'ew_notify_author_changes_requested' ) ) { function ew_notify_author_changes_requested( ...$args ) { return Editorial_Workflow::instance()->ew_notify_author_changes_requested( ...$args ); } }
+if ( ! function_exists( 'ew_notify_author_approved' ) ) { function ew_notify_author_approved( ...$args ) { return Editorial_Workflow::instance()->ew_notify_author_approved( ...$args ); } }
+if ( ! function_exists( 'ew_send_email_notification' ) ) { function ew_send_email_notification( ...$args ) { return Editorial_Workflow::instance()->ew_send_email_notification( ...$args ); } }
 if ( ! function_exists( 'ew_slack_notify' ) ) { function ew_slack_notify( ...$args ) { return Editorial_Workflow::instance()->ew_slack_notify( ...$args ); } }
 if ( ! function_exists( 'ew_output_change_request_styles' ) ) { function ew_output_change_request_styles( ...$args ) { return Editorial_Workflow::instance()->ew_output_change_request_styles( ...$args ); } }
 if ( ! function_exists( 'ew_add_feedback_metabox' ) ) { function ew_add_feedback_metabox( ...$args ) { return Editorial_Workflow::instance()->ew_add_feedback_metabox( ...$args ); } }
