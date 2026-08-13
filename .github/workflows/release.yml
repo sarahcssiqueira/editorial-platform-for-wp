@@ -1,0 +1,34 @@
+name: Generate Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Get Tag Name
+      - name: Get Tag name
+        id: vars
+        run: echo "TAG_NAME=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+
+      # Generates a GitHub Release
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_NAME }}
+          body: |
+            **Editorial Platform - for WP | Version ${{ github.ref_name }}**
+            
+            For detailed changes in this version, see the automatically generated notes.
+          generate_release_notes: true
+          make_latest: "true"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+          ZIP_NAME: "editorial-platform-for-wp-${{ github.ref_name }}.zip"
